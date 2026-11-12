@@ -564,11 +564,16 @@ class Server(ThreadingHTTPServer):
         super().server_bind()
 
 
-def serve(open_browser: bool = True, port: int = PORT) -> None:
+def serve(open_browser: bool = True, port: int = PORT, host: str | None = None) -> None:
+    """Serve the dashboard. `host` (or $KESTREL_HOST) defaults to 127.0.0.1; containers bind
+    0.0.0.0 and publish the port on the host's loopback only. The Host check still applies."""
     global HOSTS
     HOSTS = {f"127.0.0.1:{port}", f"localhost:{port}"}
+    host = host or os.environ.get("KESTREL_HOST") or "127.0.0.1"
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        print(f"Listening on {host}: anyone who can reach this port can see your agents' activity.")
     try:
-        srv = Server(("127.0.0.1", port), Handler)
+        srv = Server((host, port), Handler)
     except OSError:
         sys.exit(
             f"Port {port} is already in use, probably by another {NAME} dashboard. "

@@ -11,9 +11,10 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import sys
 
-from kestrel import NAME, meter
+from kestrel import NAME, __version__, meter
 from kestrel.cli import events as cli_tools
 from kestrel.runner import orchestrator as runner
 
@@ -23,6 +24,7 @@ def main() -> None:
         prog="kestrel",
         description=f"{NAME}: a live dashboard for AI agent runs, plus a scheduled runner for Claude Code teams.",
     )
+    p.add_argument("--version", action="version", version=f"{NAME} {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
     sub.add_parser("baseline")
@@ -45,6 +47,7 @@ def main() -> None:
     dp.add_argument("--no-install", action="store_true", help="(launch) skip the install step")
     dp.add_argument("--port", type=int, default=7777)
     dp.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
+    dp.add_argument("--host", help="address to listen on (default 127.0.0.1, or $KESTREL_HOST)")
     lp = sub.add_parser("launch", help="run a project's PR or branch locally and open it in the browser")
     lp.add_argument("team")
     lp.add_argument("target", nargs="?", help="PR number or branch (default: main)")
@@ -54,7 +57,10 @@ def main() -> None:
     wp = sub.add_parser("watch", help="open the live dashboard (http://127.0.0.1:7777 by default)")
     wp.add_argument("--port", type=int, default=7777)
     wp.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
+    wp.add_argument("--host", help="address to listen on (default 127.0.0.1, or $KESTREL_HOST)")
     args = p.parse_args()
+    if getattr(args, "host", None):
+        os.environ["KESTREL_HOST"] = args.host  # also reaches the demo's own process
     if args.cmd == "watch":
         from kestrel.api import server
 
