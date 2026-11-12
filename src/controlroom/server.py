@@ -21,7 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from controlroom import NAME, __version__, meter, paths
+from controlroom import NAME, __version__, meter, paths, status
 from controlroom.runner import orchestrator as kingdom
 
 HQ = meter.HQ
@@ -74,9 +74,24 @@ def sessions(team: str, limit: int = 12) -> list[dict]:
     return out[:limit]
 
 
-def iso(epoch: float) -> str:
-    """Epoch seconds → ISO 8601 in UTC; the browser shows it in the viewer's own timezone."""
-    return dt.datetime.fromtimestamp(epoch, dt.UTC).isoformat().replace("+00:00", "Z")
+iso = status.iso  # every time the API returns is UTC; the browser formats it
+
+
+def first_timestamp(path: Path) -> str | None:
+    """When a session started: the first timestamp in its transcript (cached: it never changes)."""
+
+    def read() -> str | None:
+        try:
+            with open(path, encoding="utf-8", errors="ignore") as f:
+                for i, line in enumerate(f):
+                    m = re.search(r'"timestamp"\s*:\s*"([^"]+)"', line)
+                    if m or i > 200:
+                        return m.group(1) if m else None
+        except OSError:
+            pass
+        return None
+
+    return CACHE.get(f"start:{path}", 86400, read)
 
 
 def short(text: str, n: int = 140) -> str:
@@ -117,6 +132,7 @@ def parse_log(path: Path, agent: str, team: str) -> tuple[list[dict], dict]:
     """Events and token usage from one transcript file."""
     events, by_id = [], {}
     usage, seen = {"tokens": 0.0, "calls": 0}, set()
+    last_turn: tuple = (None, None)
     w = cfg()["budget"]
     try:
         lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
@@ -130,6 +146,8 @@ def parse_log(path: Path, agent: str, team: str) -> tuple[list[dict], dict]:
         ts = d.get("timestamp")
         typ = d.get("type")
         msg = d.get("message") if isinstance(d.get("message"), dict) else {}
+        if typ in ("assistant", "user"):
+            last_turn = (typ, msg.get("stop_reason"))
         if typ == "assistant":
             u = msg.get("usage")
             key = (msg.get("id"), d.get("requestId"))
@@ -201,38 +219,81 @@ def parse_log(path: Path, agent: str, team: str) -> tuple[list[dict], dict]:
                             + ("token allowance exhausted" if "allowance" in out else "STOP flag"),
                         }
                     )
+    # A transcript that ends on the model's own final answer ended cleanly; one that ends mid-tool
+    # call was cut off.
+    usage["clean_end"] = last_turn == ("assistant", "end_turn")
     return events, usage
+
+
+def run_now() -> dict | None:
+    """The runner's current run with state "running" or "lost" (see status.run_state), or None."""
+    return CACHE.get("run", 1, lambda: status.run_state(HQ / "state", status.thresholds(cfg())["heartbeat_timeout"]))
+
+
+def current_run() -> dict | None:
+    """The run in progress, only if it is really alive."""
+    run = run_now()
+    return run if run and run["state"] == "running" else None
+
+
+def results() -> dict[str, str]:
+    return CACHE.get("results", 10, lambda: status.run_results(HQ / "state"))
+
+
+def with_states(raw: list[dict], live: bool, failed: bool) -> list[dict]:
+    """Attach each agent's state. Subagents first: the lead is "waiting" while they work."""
+    th, now = status.thresholds(cfg()), time.time()
+
+    def public(a: dict, state: str) -> dict:
+        d = {k: v for k, v in a.items() if not k.startswith("_")}
+        return {**d, "state": state, "finished": state == "finished", "last_activity": iso(a["_mtime"])}
+
+    subs = [
+        public(a, status.agent_state(finished=a["_finished"], live=live, last_activity=a["_mtime"], now=now, th=th))
+        for a in raw[1:]
+    ]
+    lead = raw[0]
+    state = status.agent_state(
+        finished=False,
+        live=live,
+        last_activity=lead["_mtime"],
+        now=now,
+        th=th,
+        ended_cleanly=lead["_clean_end"],
+        waiting=any(x["state"] in ("working", "idle") for x in subs),
+        failed=failed,
+    )
+    return [public(lead, state), *subs]
 
 
 def session_detail(team: str, sid: str | None) -> dict:
     ss = sessions(team)
     s = next((x for x in ss if x["id"] == sid), ss[0] if ss else None)
     if not s:
-        return {"team": team, "session": None, "sessions": [], "events": [], "agents": []}
+        return {"team": team, "session": None, "live": False, "sessions": [], "events": [], "agents": []}
     cur = current_run()
     live = bool(cur and cur.get("session") == s["id"])
 
     def build():
         events, lead_usage = parse_log(s["path"], "lead", team)
+        lead_times = [e["ts"] for e in events if e.get("ts")]
         agents = [
             {
                 "role": "lead",
                 "description": "Team lead",
-                "finished": not live,
                 "tokens": int(lead_usage["tokens"]),
                 "actions": sum(e["kind"] in ("tool", "delegate") for e in events),
                 "model": lead_usage.get("model", ""),
+                "start": lead_times[0] if lead_times else None,
+                "end": lead_times[-1] if lead_times else None,
+                "_finished": False,
+                "_clean_end": lead_usage["clean_end"],
+                "_mtime": s["mtime"],
             }
         ]
         subdir = s["path"].with_suffix("")
         for f in sorted((subdir / "subagents").glob("*.jsonl")) if (subdir / "subagents").exists() else []:
-            meta = {}
-            mf = f.with_suffix(".meta.json")
-            if mf.exists():
-                try:
-                    meta = json.loads(mf.read_text(encoding="utf-8"))
-                except ValueError:
-                    pass
+            meta = status.read_json(f.with_suffix(".meta.json")) or {}
             role = meta.get("agentType", "subagent")
             ev, us = parse_log(f, role, team)
             events.extend(ev)
@@ -241,12 +302,14 @@ def session_detail(team: str, sid: str | None) -> dict:
                 {
                     "role": role,
                     "description": meta.get("description", ""),
-                    "finished": bool(meta.get("finished")),
                     "tokens": int(us["tokens"]),
                     "actions": sum(e["kind"] == "tool" for e in ev),
                     "model": us.get("model", ""),
                     "start": min(times) if times else None,
                     "end": max(times) if times else None,
+                    "_finished": bool(meta.get("finished")),
+                    "_clean_end": False,
+                    "_mtime": f.stat().st_mtime,
                 }
             )
         events.sort(key=lambda e: e.get("ts") or "")
@@ -257,30 +320,16 @@ def session_detail(team: str, sid: str | None) -> dict:
         "team": team,
         "session": s["id"],
         "live": live,
+        "started_at": first_timestamp(s["path"]),
         "sessions": [
-            {
-                "id": x["id"],
-                "when": dt.datetime.fromtimestamp(x["mtime"]).strftime("%a %d %b %H:%M"),
-                "updated_at": iso(x["mtime"]),
-            }
-            for x in ss
+            {"id": x["id"], "started_at": first_timestamp(x["path"]), "updated_at": iso(x["mtime"])} for x in ss
         ],
-        **data,
+        "events": data["events"],
+        "agents": with_states(data["agents"], live, status.is_failure(results().get(s["id"]))),
     }
 
 
 # ───────────────────────────── overview ─────────────────────────────
-
-
-def current_run() -> dict | None:
-    f = HQ / "state" / "current.json"
-    lock = HQ / "state" / "run.lock"
-    if f.exists() and lock.exists():
-        try:
-            return json.loads(f.read_text(encoding="utf-8"))
-        except ValueError:
-            return None
-    return None
 
 
 def backlog_counts(team: str) -> dict:
@@ -323,7 +372,8 @@ def previews(team: str) -> list[str]:
 
 def overview() -> dict:
     c = cfg()
-    cur = current_run()
+    run = run_now()
+    cur = run if run and run["state"] == "running" else None
     pool, s = CACHE.get("budget", 20, lambda: kingdom.pool_today(c))
     today = kingdom.DAYS[dt.date.today().weekday()]
     prs = prs_all()
@@ -332,9 +382,11 @@ def overview() -> dict:
         ss = sessions(team, 1)
         last = ss[0] if ss else None
         running = bool(cur and cur.get("team") == team)
+        run_state = run["state"] if run and run.get("team") == team else None
+        det = session_detail(team, last["id"]) if last else None
+        health = status.team_health(run_state, bool(last), [a["state"] for a in det["agents"]] if det else [])
         now = None
-        if running and last:
-            det = session_detail(team, last["id"])
+        if running and det:
             acts = [e for e in det["events"] if e["kind"] in ("tool", "delegate", "say")]
             if acts:
                 now = {"agent": acts[-1]["agent"], "text": acts[-1]["text"], "ts": acts[-1]["ts"]}
@@ -351,10 +403,13 @@ def overview() -> dict:
                 "enabled": t.get("enabled", True),
                 "scheduled_today": team in c["schedule"].get(today, []),
                 "running": running,
+                "run_state": run_state,
+                "health": health,
+                "heartbeat_at": iso(run["last_heartbeat"]) if run_state else None,
                 "now": now,
                 "allowance": cur.get("allowance") if running else 0,
                 "used": used,
-                "last_run": dt.datetime.fromtimestamp(last["mtime"]).strftime("%a %d %b %H:%M") if last else None,
+                "started_at": det["started_at"] if det else None,
                 "last_run_at": iso(last["mtime"]) if last else None,
                 "today_tokens": s["today"].get(f"team:{team}", 0),
                 "week_tokens": s["week"].get(f"team:{team}", 0),
@@ -366,12 +421,13 @@ def overview() -> dict:
         )
     b = c["budget"]
     return {
-        "now": dt.datetime.now().strftime("%H:%M:%S"),
         "generated_at": iso(time.time()),
+        "utc_offset_min": round(dt.datetime.now().astimezone().utcoffset().total_seconds() / 60),
         "name": NAME,
         "version": __version__,
         "stop": (HQ / "STOP").exists(),
         "running": cur,
+        "lost_run": run if run and run["state"] == "lost" else None,
         "budget": {
             "agents_today": s["today"]["agents"],
             "agents_daily": b["agents_daily"],

@@ -22,7 +22,7 @@ import time
 import uuid
 from pathlib import Path
 
-from controlroom import NAME, meter, paths
+from controlroom import NAME, meter, paths, status
 
 HQ = meter.HQ
 TEAMS = HQ / "teams"
@@ -36,7 +36,7 @@ GUARD = (paths.RUNNER / "guard.py").as_posix()
 
 
 def log(msg: str) -> None:
-    line = f"[{dt.datetime.now():%Y-%m-%d %H:%M:%S}] {msg}"
+    line = f"[{dt.datetime.now().astimezone().isoformat(timespec='seconds')}] {msg}"
     print(line, flush=True)
     LOGS.mkdir(exist_ok=True)
     with open(LOGS / "kingdom.log", "a", encoding="utf-8") as f:
@@ -148,6 +148,7 @@ def settings_json() -> dict:
         "hooks": {
             "PreToolUse": [{"matcher": "*", "hooks": hook}],
             "PostToolUse": [{"matcher": "*", "hooks": hook}],
+            "Stop": [{"hooks": hook}],
         },
     }
 
@@ -410,19 +411,27 @@ def run_team(team: str, cfg: dict, allowance: int, today: str, dry: bool) -> dic
         return result
     log(f"{team}: starting (allowance {allowance:,}, session {sid})")
     STATE.mkdir(exist_ok=True)
-    current = STATE / "current.json"  # read by the Control Room
-    current.write_text(
-        json.dumps({"team": team, "session": sid, "since": since, "allowance": allowance}), encoding="utf-8"
-    )
-    try:
-        r = subprocess.run(
-            cmd, cwd=tdir, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=4 * 3600
+    info = {"team": team, "session": sid, "since": since, "started_at": status.iso(since), "allowance": allowance}
+    # The dashboard trusts this heartbeat, not the agents: if this process dies, the run shows as lost.
+    with status.Heartbeat(STATE / "current.json", info) as hb:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=tdir,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
-        out, rc = r.stdout, r.returncode
-    except subprocess.TimeoutExpired as e:
-        out, rc = (e.stdout or "") if isinstance(e.stdout, str) else "", -1
-    finally:
-        current.unlink(missing_ok=True)
+        hb.update(child_pid=proc.pid)
+        try:
+            out, _ = proc.communicate(timeout=4 * 3600)
+            rc = proc.returncode
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            out, _ = proc.communicate()
+            rc = -1
     (LOGS / f"{today}-{team}.json").write_text(out or "", encoding="utf-8")
     info = {}
     try:
@@ -541,9 +550,50 @@ def acquire_lock() -> bool:
     STATE.mkdir(exist_ok=True)
     lock = STATE / "run.lock"
     if lock.exists() and time.time() - lock.stat().st_mtime < 6 * 3600:
-        return False
+        try:
+            pid = int(lock.read_text().strip() or 0)
+        except (OSError, ValueError):
+            pid = 0
+        if status.pid_alive(pid):
+            return False
+        log(f"The previous runner (PID {pid}) is gone: taking over its lock.")
     lock.write_text(str(os.getpid()))
     return True
+
+
+def save_results(day: str, rows: list[dict]) -> None:
+    """Merge run results into state/run-<day>.json (a later run the same day must not erase earlier ones)."""
+    f = STATE / f"run-{day}.json"
+    old = status.read_json_list(f)
+    sessions = {r.get("session") for r in rows if r.get("session")}
+    merged = [r for r in old if r.get("session") not in sessions] + rows
+    f.write_text(json.dumps(merged, indent=2), encoding="utf-8")
+
+
+def recover_lost_run(cfg: dict) -> dict | None:
+    """A runner that died mid-run leaves current.json behind. Record that run as lost, leave the team a
+    handoff note about any uncommitted work, and clear the marker so the dashboard stops showing it."""
+    run = status.run_state(STATE, status.thresholds(cfg)["heartbeat_timeout"])
+    if not run or run["state"] != "lost":
+        return None
+    team, sid = run.get("team", ""), run.get("session", "")
+    started = dt.datetime.fromtimestamp(run.get("since") or run["last_heartbeat"]).astimezone()
+    log(f"{team}: the run started {started:%Y-%m-%d %H:%M} (session {sid}) was lost: its runner stopped early.")
+    save_results(
+        started.date().isoformat(),
+        [{"team": team, "session": sid, "allowance": run.get("allowance", 0), "status": "lost", "used": 0}],
+    )
+    repo = TEAMS / team / "repo"
+    dirty = git(repo, "status", "--porcelain", check=False) if (repo / ".git").exists() else ""
+    if dirty:
+        with open(TEAMS / team / "STATE.md", "a", encoding="utf-8") as f:
+            f.write(
+                f"\n\n## ⚠️ Unfinished work from the {started:%Y-%m-%d} run (the run was interrupted)\n"
+                "These changes in repo/ were NOT committed. First thing next run: have tester + "
+                "qa review them, then commit or discard.\n```\n" + dirty + "\n```\n"
+            )
+    (STATE / "current.json").unlink(missing_ok=True)
+    return run
 
 
 def cmd_run(args, cfg: dict) -> None:
@@ -558,6 +608,8 @@ def cmd_run(args, cfg: dict) -> None:
             f"agents' project. Move the home folder outside it, or rename {bad / '.git'}."
         )
         return
+    if not args.dry_run:
+        recover_lost_run(cfg)
     if not args.force and dt.datetime.now().hour < cfg["schedule"].get("start_hour", 0):
         log("Too early (start_hour): no run yet.")
         return
@@ -614,7 +666,7 @@ def cmd_run(args, cfg: dict) -> None:
                 last.unlink(missing_ok=True)
                 break
         if not args.dry_run:
-            (STATE / f"run-{today}.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
+            save_results(today, results)
             brief = write_brief(today, cfg)
             pulls = (
                 f"https://github.com/pulls?q=is%3Aopen+is%3Apr+author%3A{owner(cfg)}+archived%3Afalse"

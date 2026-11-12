@@ -40,6 +40,17 @@ sun = []
 # Don't start agents before this local hour (0-23).
 start_hour = 0
 
+[monitor]
+# When the dashboard stops believing a run or an agent is alive (seconds).
+heartbeat_timeout = 45   # the runner hasn't checked in for this long → the run is "lost"
+idle_after = 120         # an agent with no activity for this long → "idle"
+stale_after = 600        # ...and after this long → "stale" (it may be stuck)
+
+[pipeline]
+# Refuse to start QA while a developer or tester is still running, and a tester while a
+# developer is: QA must judge a finished, tested change.
+enforce_order = true
+
 [models]
 # The lead plans, delegates and reviews: give it the strongest model.
 lead = "opus"

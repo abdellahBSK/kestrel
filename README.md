@@ -38,6 +38,22 @@ controlroom run --dry-run # what today's scheduled run would do
 Don't put the home folder inside a git repository: Claude Code would treat that repository as
 the agents' project, so the runner refuses to start.
 
+## How status works
+
+The dashboard never trusts an agent's own last word about itself:
+
+- **Runs.** While a run is in progress the runner rewrites `state/current.json` with a heartbeat
+  every 10 seconds. If the heartbeat stops (crash, sleep, closed window) and the agent process is
+  gone too, the run shows as **lost**, and the next run records it and leaves the team a note
+  about any uncommitted work.
+- **Agents.** *Working*, *waiting* (a lead waiting on its agents), *idle* after 2 minutes without
+  activity, *stale* after 10 (it may be stuck), *finished*, *failed*, or **cut off** when the run
+  ended before the agent reported back. Thresholds live under `[monitor]` in the config.
+- **Order.** The guard refuses to start QA while a developer or tester is still running, and
+  stops the lead from ending a run while agents it started are still working (`[pipeline]`).
+- **Time.** The API speaks UTC only. The dashboard shows times on this computer's clock by
+  default (browsers' time-zone data can lag behind the OS), or in the browser's zone if you prefer.
+
 ## Safety
 
 The runner installs a guard hook that blocks pushes to anything but task branches, writes outside
