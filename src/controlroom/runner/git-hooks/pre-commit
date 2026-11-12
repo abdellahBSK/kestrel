@@ -1,0 +1,10 @@
+#!/bin/sh
+# Kingdom Law 4: agents commit only on task branches (<type>/<KEY>-<NNN>-<desc>) or agents/*.
+# The King can bypass with KING=1.
+[ "$KING" = "1" ] && exit 0
+branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+if echo "$branch" | grep -qE '^(feat|fix|refactor|perf|test|docs|chore|security)/[A-Z]{3}-[0-9]{3}-[a-z0-9][a-z0-9-]*$|^agents/'; then
+  exit 0
+fi
+echo "Kingdom: commit on a task branch like feat/TEL-014-lock-screen-ui (current: $branch)." >&2
+exit 1

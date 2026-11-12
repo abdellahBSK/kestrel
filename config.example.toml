@@ -1,0 +1,115 @@
+# ─────────────────────────────────────────────────────────────
+#  Control Room config. Copy this file to <home>/config.toml and edit it.
+#  <home> is $CONTROLROOM_HOME, or ~/.controlroom when that is not set.
+#  Token unit = input + output + cache-write tokens ("fresh" tokens), weighted by model price.
+# ─────────────────────────────────────────────────────────────
+
+[owner]
+# Your GitHub account. Repos you own get an `agent` label on agent PRs. Leave empty to skip labels.
+github = ""
+
+[budget]
+# Total tokens ALL agent teams may use in one day.
+agents_daily = 800_000
+# Total tokens ALL agent teams may use in the last 7 days (rolling).
+agents_weekly = 4_000_000
+# If YOUR OWN usage over the last 7 days goes above this, agents get half budget.
+personal_week_high = 8_000_000
+# A team gets a "wrap up now" warning at this share of its allowance...
+warn_at = 0.80
+# ...and is hard-stopped at this share.
+stop_at = 1.00
+# A run needs ~25-30k tokens just to read its charter, state and backlog, so smaller
+# allowances are skipped instead of wasted on half-finished work.
+min_team_run = 120_000
+# Weights per token type (1 = counts fully, 0 = ignored).
+weight_input = 1.0
+weight_output = 1.0
+weight_cache_write = 1.0
+weight_cache_read = 0.0
+
+[schedule]
+# Teams that work each day. Order = run order. The day's budget is split by team weight.
+mon = ["sandbox"]
+tue = ["todo-api"]
+wed = ["sandbox"]
+thu = ["todo-api"]
+fri = ["docs-site"]
+sat = []
+sun = []
+# Don't start agents before this local hour (0-23).
+start_hour = 0
+
+[models]
+# The lead plans, delegates and reviews: give it the strongest model.
+lead = "opus"
+lead_effort = "high"         # low | medium | high | xhigh | max
+lead_fallback = "sonnet"     # used automatically if the lead model is unavailable
+developer = "sonnet"
+security = "sonnet"
+optimizer = "sonnet"
+tester = "haiku"
+qa = "haiku"
+
+[model_ids]
+# Pin the CLI's short model names to exact model versions.
+opus = "claude-opus-5-5"
+sonnet = "claude-sonnet-5-5"
+haiku = "claude-haiku-5-5"
+
+[model_weights]
+# Budget unit = "Opus-equivalent tokens": each model's tokens are weighted by its price
+# relative to Opus. First match wins, so put specific versions before families.
+"opus-5-5" = 1.0
+opus = 1.25
+"sonnet-5" = 0.5
+sonnet = 0.75
+"haiku-5" = 0.025
+haiku = 0.25
+default = 1.0
+
+# ─────────────────────────────────────────────────────────────
+#  TEAMS: one per project.
+#  repo     = GitHub URL to clone, or "" for a new local-only repository
+#  mode     = "build"    → the team writes code on task branches
+#             "advisory" → the team only audits and writes proposals (read-only)
+#  enabled  = false      → the team never runs, even if scheduled
+#  key      = 3-letter project code used in backlog IDs and branch names (TOD-014)
+#  pr_mode  = "ready"    → push task branches and open PRs for review
+#             "draft"    → push branches, open DRAFT PRs only
+#             "none"     → nothing is pushed
+#  specs    = files copied into the team's specs/ folder (read-only for agents)
+# ─────────────────────────────────────────────────────────────
+
+[teams.sandbox]
+title = "Sandbox: a local-only playground repository"
+repo = ""
+specs = []
+mode = "build"
+weight = 1.0
+enabled = true
+key = "SBX"
+pr_mode = "none"
+focus = "Create a tiny Python CLI that converts temperatures, with tests. Keep it small."
+
+[teams.todo-api]
+title = "Todo API: a small REST service"
+repo = "https://github.com/your-name/todo-api.git"
+specs = []
+mode = "build"
+weight = 1.0
+enabled = false
+key = "TOD"
+pr_mode = "draft"
+focus = "Read the README and existing code, then harden and extend it. Keep tests green."
+
+[teams.docs-site]
+title = "Docs site: audit only"
+repo = "https://github.com/your-name/docs-site.git"
+specs = []
+mode = "advisory"
+weight = 1.0
+enabled = false
+key = "DOC"
+pr_mode = "none"
+focus = "Audit performance, accessibility and broken links. Write proposals; change nothing."
