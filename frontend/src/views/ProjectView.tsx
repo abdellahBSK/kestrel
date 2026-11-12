@@ -28,9 +28,9 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "@/components/ui/overlays";
-import { Badge, Card, EmptyState, KeyBadge, Meter, Skeleton } from "@/components/ui/primitives";
+import { Badge, Card, EmptyState, KeyBadge, Meter, Skeleton, Tooltip } from "@/components/ui/primitives";
 import { action, type Overview, type Session } from "@/lib/api";
-import { clock, dateTime, duration, integer, relative, tokens } from "@/lib/format";
+import { clock, dateTime, duration, integer, relative, tokens, usd } from "@/lib/format";
 import { HEALTH } from "@/lib/health";
 import { useSession } from "@/lib/queries";
 import { navigate, type Tab } from "@/lib/router";
@@ -215,9 +215,25 @@ export function ProjectView({ ov, team, tab }: { ov: Overview | undefined; team:
           <span className="tabular">
             {duration(span.start, s?.live ? new Date().toISOString() : span.end)}
           </span>
+          {span.end && (
+            <div className="text-muted mt-0.5 text-[12px] font-normal">
+              last activity {relative(span.end)}
+            </div>
+          )}
         </Stat>
-        <Stat label="Last activity">
-          <span className="text-ink-2 font-normal">{span.end ? relative(span.end) : "–"}</span>
+        <Stat label="Est. cost">
+          {s?.run ? (
+            <Tooltip
+              content={`At Claude API list prices (${ov.budget.prices_as_of})${s.run.cost_unknown ? "; some tokens are from models without a price" : ""}. Subscription plans are billed differently.`}
+            >
+              <span className="tabular cursor-default">
+                {usd(s.run.cost_usd)}
+                {s.run.cost_unknown && "+"}
+              </span>
+            </Tooltip>
+          ) : (
+            "–"
+          )}
         </Stat>
       </Card>
 

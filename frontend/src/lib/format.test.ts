@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { clock, dateTime, duration, offsetLabel, relative, setDisplayOffset, tokens } from "./format";
+import { clock, dateTime, duration, offsetLabel, relative, setDisplayOffset, tokens, usd } from "./format";
+
+describe("estimated dollars", () => {
+  it("shows cents, whole dollars past $100, and crumbs as <$0.01", () => {
+    expect(usd(0)).toBe("$0");
+    expect(usd(0.004)).toBe("<$0.01");
+    expect(usd(3.456)).toBe("$3.46");
+    expect(usd(1234.5)).toBe("$1,235");
+    expect(usd(null)).toBe("–");
+  });
+});
 
 const TS = "2026-11-12T08:49:43Z"; // UTC
 

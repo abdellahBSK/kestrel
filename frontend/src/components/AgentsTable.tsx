@@ -1,6 +1,6 @@
 import { CircleCheck, CircleDashed, CircleX, Hourglass, Users } from "lucide-react";
 import type { Agent, Session } from "@/lib/api";
-import { clock, duration, integer, relative, shortModel, tokens } from "@/lib/format";
+import { clock, duration, integer, relative, shortModel, tokens, usd } from "@/lib/format";
 import { AGENT } from "@/lib/health";
 import { cn, roleColor } from "@/lib/utils";
 import { Card, EmptyState, RoleChip, Tooltip } from "./ui/primitives";
@@ -84,6 +84,7 @@ export function AgentsTable({ session }: { session: Session | undefined }) {
               <th className="px-3 py-2 font-medium">Model</th>
               <th className="px-3 py-2 text-right font-medium">Actions</th>
               <th className="px-3 py-2 font-medium">Time</th>
+              <th className="px-3 py-2 text-right font-medium">Cost</th>
               <th className="w-[180px] py-2 pr-4 pl-3 text-right font-medium">Tokens</th>
             </tr>
           </thead>
@@ -116,6 +117,15 @@ export function AgentsTable({ session }: { session: Session | undefined }) {
                         <span className="text-critical-ink ml-1.5 cursor-default">· {a.errors} failed</span>
                       </Tooltip>
                     )}
+                    {a.retries > 0 && (
+                      <Tooltip
+                        content={`${a.retries} action${a.retries > 1 ? "s" : ""} repeated one that had failed`}
+                      >
+                        <span className="ml-1.5 cursor-default">
+                          · {a.retries} {a.retries > 1 ? "retries" : "retry"}
+                        </span>
+                      </Tooltip>
+                    )}
                   </td>
                   <td className="text-ink-2 tabular px-3 py-2.5 whitespace-nowrap">
                     {a.start ? (
@@ -128,6 +138,18 @@ export function AgentsTable({ session }: { session: Session | undefined }) {
                       </>
                     ) : (
                       "–"
+                    )}
+                  </td>
+                  <td className="text-ink-2 tabular px-3 py-2.5 text-right whitespace-nowrap">
+                    {a.cost_unknown && a.cost_usd === 0 ? (
+                      <Tooltip content="No price is known for this model. Add one under [prices] in config.toml.">
+                        <span className="cursor-default">–</span>
+                      </Tooltip>
+                    ) : (
+                      <>
+                        {usd(a.cost_usd)}
+                        {a.cost_unknown && "+"}
+                      </>
                     )}
                   </td>
                   <td className="py-2.5 pr-4 pl-3">
@@ -148,7 +170,8 @@ export function AgentsTable({ session }: { session: Session | undefined }) {
         </table>
       </div>
       <p className="border-line text-muted border-t px-4 py-2.5 text-[12px]">
-        Tokens are Opus-equivalent: each model&apos;s tokens are weighted by its price relative to Opus.
+        Cost is an estimate at Claude API list prices; subscription plans are billed differently. Tokens are
+        weighted by <code className="font-mono">[model_weights]</code> in the config.
       </p>
     </Card>
   );

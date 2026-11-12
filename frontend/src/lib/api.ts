@@ -48,13 +48,17 @@ export type Team = {
   last_run_at: string | null;
   today_tokens: number;
   week_tokens: number;
+  /** Estimated USD at API list prices (src/kestrel/core/cost.py). */
+  today_usd: number;
+  week_usd: number;
+  run_usd: number;
   backlog: BacklogCounts;
   prs: PullRequest[];
   questions: string;
   previews: string[];
 };
 
-export type DailyUsage = { date: string; agents: number; personal: number };
+export type DailyUsage = { date: string; agents: number; personal: number; usd: number };
 
 export type Overview = {
   generated_at: string;
@@ -76,6 +80,11 @@ export type Overview = {
     pool: number;
     warn_at: number;
     daily: DailyUsage[];
+    usd_today: number;
+    usd_week: number;
+    /** Some tokens came from models without a price: the dollar totals are a lower bound. */
+    usd_partial: boolean;
+    prices_as_of: string;
   };
   schedule: Record<string, string[]>;
   today: string;
@@ -101,7 +110,10 @@ export type Agent = {
   role: string;
   description: string;
   errors: number;
+  retries: number;
   cost_usd: number;
+  cost_unknown: boolean;
+  duration_s: number;
   state: AgentState;
   finished: boolean;
   last_activity: string;
@@ -126,6 +138,8 @@ export type Session = {
     error: string;
     budget: number;
     tokens: number;
+    cost_usd: number;
+    cost_unknown: boolean;
   };
   sessions: { id: string; started_at: string | null; updated_at: string }[];
   events: FeedEvent[];

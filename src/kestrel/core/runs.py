@@ -26,13 +26,17 @@ def _new_agent(aid: str, ts: float) -> dict:
         "tokens": 0.0,
         "raw_tokens": {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0},
         "cost_usd": 0.0,
+        "cost_unknown": False,  # some tokens came from a model without a price
         "actions": 0,
         "errors": 0,
+        "retries": 0,  # actions that repeat one of this agent's failed actions
+        "failed": set(),  # (tool, text) of its failed actions
     }
 
 
-def fold(rows: list[tuple], *, heartbeat: float | None, now: float, th: dict, weigh=None) -> dict:
-    """rows: (ts, type, agent, data) in time order. weigh(model, data) → weighted tokens (optional)."""
+def fold(rows: list[tuple], *, heartbeat: float | None, now: float, th: dict, weigh=None, price=None) -> dict:
+    """rows: (ts, type, agent, data) in time order. weigh(model, data) → weighted tokens and
+    price(model, data) → USD or None when unknown (both optional)."""
     run = {
         "started": None,
         "last": None,
@@ -86,7 +90,11 @@ def fold(rows: list[tuple], *, heartbeat: float | None, now: float, th: dict, we
                 raw[k] += d.get(k, 0)
             a["model"] = a["model"] or d.get("model", "")
             a["tokens"] += weigh(d.get("model") or a["model"], d) if weigh else d.get("input", 0) + d.get("output", 0)
-            a["cost_usd"] += d.get("cost_usd", 0.0)
+            usd = price(d.get("model") or a["model"], d) if price else d.get("cost_usd", 0.0)
+            if usd is None:
+                a["cost_unknown"] = True
+            else:
+                a["cost_usd"] += usd
         elif typ == "agent.action":
             call = d.get("call")
             item = calls.get(call) if call else None
@@ -107,8 +115,12 @@ def fold(rows: list[tuple], *, heartbeat: float | None, now: float, th: dict, we
                 a["actions"] += 1
                 if call:
                     calls[call] = item
+                key = (item["tool"], item["text"])
+                if key in a["failed"]:
+                    a["retries"] += 1
                 if item["status"] == "error":
                     a["errors"] += 1
+                    a["failed"].add(key)
             else:  # a later update to the same call: its result
                 was = item["status"]
                 item["status"] = d.get("status", item["status"])
@@ -117,7 +129,9 @@ def fold(rows: list[tuple], *, heartbeat: float | None, now: float, th: dict, we
                 if d.get("summary"):
                     item["title"] = d["summary"]
                 if item["status"] == "error" and was != "error":
-                    agents[item["agent_id"]]["errors"] += 1
+                    owner = agents[item["agent_id"]]
+                    owner["errors"] += 1
+                    owner["failed"].add((item["tool"], item["text"]))
 
     # ── states ──
     last_signal = max(x for x in (heartbeat, run["last"], 0.0) if x is not None)
@@ -162,8 +176,12 @@ def fold(rows: list[tuple], *, heartbeat: float | None, now: float, th: dict, we
             "live": live,
             "heartbeat": heartbeat,
             "tokens": int(sum(a["tokens"] for a in agents.values())),
+            "cost_usd": sum(a["cost_usd"] for a in agents.values()),
+            "cost_unknown": any(a["cost_unknown"] for a in agents.values()),
         },
-        "agents": [{**a, "state": states[aid]} for aid, a in agents.items()],
+        "agents": [
+            {**{k: v for k, v in a.items() if k != "failed"}, "state": states[aid]} for aid, a in agents.items()
+        ],
         "feed": feed[-FEED_LIMIT:],
     }
 

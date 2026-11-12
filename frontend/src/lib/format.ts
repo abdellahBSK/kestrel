@@ -34,6 +34,15 @@ export function tokens(n: number | null | undefined): string {
   return String(Math.round(v));
 }
 
+/** Estimated dollars: cents below $100, whole dollars above, "<$0.01" for crumbs. */
+export function usd(n: number | null | undefined): string {
+  if (n == null) return "–";
+  if (n === 0) return "$0";
+  if (n < 0.01) return "<$0.01";
+  if (n < 100) return `$${n.toFixed(2)}`;
+  return `$${Math.round(n).toLocaleString("en-US")}`;
+}
+
 export function integer(n: number): string {
   return new Intl.NumberFormat().format(Math.round(n));
 }

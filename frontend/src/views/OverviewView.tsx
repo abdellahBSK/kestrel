@@ -12,7 +12,7 @@ import {
   Tooltip,
 } from "@/components/ui/primitives";
 import type { Overview } from "@/lib/api";
-import { clock, integer, percent, tokens } from "@/lib/format";
+import { clock, integer, percent, tokens, usd } from "@/lib/format";
 import { href } from "@/lib/router";
 import { cn } from "@/lib/utils";
 
@@ -97,16 +97,20 @@ export function OverviewView({ ov }: { ov: Overview | undefined }) {
             />
           }
         />
+        <Kpi
+          label="Est. cost today"
+          value={usd(b.usd_today) + (b.usd_partial ? "+" : "")}
+          sub={
+            <Tooltip
+              content={`At Claude API list prices (${b.prices_as_of}), for everything reported to ${ov.name}, your own Claude Code sessions included.${b.usd_partial ? " Some tokens are from models without a price: add them under [prices] in config.toml." : ""} Subscription plans are billed differently.`}
+            >
+              <span className="cursor-default">{usd(b.usd_week)} over the last 7 days</span>
+            </Tooltip>
+          }
+        />
         {b.agents_daily ? (
           <Kpi label="Left for agents today" value={tokens(b.pool)} sub="After daily and weekly caps" />
-        ) : (
-          <Kpi
-            label="Projects"
-            value={String(ov.teams.length)}
-            sub={`${ov.teams.filter((t) => t.health !== "never").length} have reported a run`}
-          />
-        )}
-        {b.you_week > 0 ? (
+        ) : b.you_week > 0 ? (
           <Kpi
             label="Your usage today"
             value={tokens(b.you_today)}
@@ -242,9 +246,11 @@ export function OverviewView({ ov }: { ov: Overview | undefined }) {
                       </td>
                       <td className="text-ink-2 tabular px-3 py-3 text-right">
                         {t.today_tokens ? tokens(t.today_tokens) : "–"}
+                        {t.today_usd > 0 && <div className="text-muted text-[12px]">{usd(t.today_usd)}</div>}
                       </td>
                       <td className="text-ink-2 tabular px-3 py-3 text-right">
                         {t.week_tokens ? tokens(t.week_tokens) : "–"}
+                        {t.week_usd > 0 && <div className="text-muted text-[12px]">{usd(t.week_usd)}</div>}
                       </td>
                       <td className="px-3 py-3">
                         {total ? (

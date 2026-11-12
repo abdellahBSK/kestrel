@@ -27,7 +27,7 @@ from urllib.parse import parse_qs, urlparse
 from kestrel import NAME, __version__, meter, paths
 from kestrel.adapters import claude_code
 from kestrel.api import ingest
-from kestrel.core import runs, status
+from kestrel.core import cost, runs, status
 from kestrel.core.events import EventError
 from kestrel.runner import orchestrator, system
 from kestrel.storage.store import open_store
@@ -105,6 +105,12 @@ def weigh(model: str, d: dict) -> float:
     )
 
 
+def price(model: str, d: dict) -> float | None:
+    """Estimated USD for one agent.tokens event (core.cost), None when the model has no price."""
+    table = CACHE.get("prices", 5, lambda: cost.price_table(cfg()))
+    return cost.cost(model, d, table)
+
+
 def folded(project: str, run_id: str) -> dict:
     """A run folded into run, agents and feed; cached until it changes (states refresh every 2 s)."""
     st = store()
@@ -118,6 +124,7 @@ def folded(project: str, run_id: str) -> dict:
             now=time.time(),
             th=th,
             weigh=weigh,
+            price=price,
         )
 
     return CACHE.get(f"fold:{project}:{run_id}:{version}:{int(time.time() // 2)}", 2, build)
@@ -138,8 +145,11 @@ def agent_public(a: dict) -> dict:
         "tokens": int(a["tokens"]),
         "raw_tokens": a["raw_tokens"],
         "cost_usd": round(a["cost_usd"], 4),
+        "cost_unknown": a["cost_unknown"],
         "actions": a["actions"],
         "errors": a["errors"],
+        "retries": a["retries"],
+        "duration_s": round(max(0.0, a["last"] - a["first"]), 1),
         "start": iso(a["first"]),
         "end": iso(a["last"]),
         "last_activity": iso(a["last"]),
@@ -165,6 +175,8 @@ def run_public(f: dict) -> dict:
         "error": r["error"],
         "budget": r["budget"],
         "tokens": r["tokens"],
+        "cost_usd": round(r["cost_usd"], 4),
+        "cost_unknown": r["cost_unknown"],
         "started_at": iso(r["started"]),
         "last_activity": iso(r["last"]),
     }
@@ -255,16 +267,27 @@ def usage(c: dict) -> dict:
     since = (today0 - dt.timedelta(days=6)).timestamp()
     today = days[-1]
     per_day = {d: 0.0 for d in days}
+    usd_day = {d: 0.0 for d in days}  # estimated cost of everything reported, interactive included
     proj_today: dict[str, float] = {}
     proj_week: dict[str, float] = {}
+    usd_today: dict[str, float] = {}
+    usd_week: dict[str, float] = {}
+    unpriced = False
     for project, ts, d in store().tokens_since(since):
         day = dt.datetime.fromtimestamp(ts).astimezone().date().isoformat()
         w = weigh(d.get("model", ""), d)
-        if day in per_day and not d.get("interactive"):  # your own sessions count as "you", below
-            per_day[day] += w
+        usd = price(d.get("model", ""), d)
+        unpriced = unpriced or usd is None
+        usd = usd or 0.0
+        if day in per_day:
+            usd_day[day] += usd
+            if not d.get("interactive"):  # your own sessions count as "you", below
+                per_day[day] += w
         proj_week[project] = proj_week.get(project, 0) + w
+        usd_week[project] = usd_week.get(project, 0) + usd
         if day == today:
             proj_today[project] = proj_today.get(project, 0) + w
+            usd_today[project] = usd_today.get(project, 0) + usd
     mine = CACHE.get("personal", 20, lambda: meter.summary(c))
     personal = {d["date"]: d["personal"] for d in mine["daily"]}
     return {
@@ -272,9 +295,17 @@ def usage(c: dict) -> dict:
         "week": int(sum(per_day.values())),
         "proj_today": proj_today,
         "proj_week": proj_week,
+        "usd_today": usd_day[today],
+        "usd_week": sum(usd_day.values()),
+        "proj_usd_today": usd_today,
+        "proj_usd_week": usd_week,
+        "usd_partial": unpriced,
         "you_today": mine["today"]["personal"],
         "you_week": mine["week"]["personal"],
-        "daily": [{"date": d, "agents": int(per_day[d]), "personal": personal.get(d, 0)} for d in days],
+        "daily": [
+            {"date": d, "agents": int(per_day[d]), "personal": personal.get(d, 0), "usd": round(usd_day[d], 4)}
+            for d in days
+        ],
     }
 
 
@@ -348,6 +379,9 @@ def overview() -> dict:
                 "last_run_at": iso(r["last"]) if r else None,
                 "today_tokens": int(u["proj_today"].get(name, 0)),
                 "week_tokens": int(u["proj_week"].get(name, 0)),
+                "today_usd": round(u["proj_usd_today"].get(name, 0.0), 4),
+                "week_usd": round(u["proj_usd_week"].get(name, 0.0), 4),
+                "run_usd": round(r["cost_usd"], 4) if r else 0.0,
                 "backlog": backlog_counts(name),
                 "prs": prs.get(name, []) or reported_prs(name),
                 "questions": questions(name),
@@ -374,6 +408,10 @@ def overview() -> dict:
             "pool": pool,
             "warn_at": b.get("warn_at", 0.8),
             "daily": u["daily"],
+            "usd_today": round(u["usd_today"], 4),
+            "usd_week": round(u["usd_week"], 4),
+            "usd_partial": u["usd_partial"],
+            "prices_as_of": cost.PRICES_AS_OF,
         },
         "schedule": {d: c["schedule"].get(d, []) for d in orchestrator.DAYS},
         "today": today,
