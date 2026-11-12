@@ -841,7 +841,12 @@ def cmd_status(cfg: dict) -> None:
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="The Master of the King's agent teams")
+    from controlroom import NAME, cli_tools
+
+    p = argparse.ArgumentParser(
+        prog="controlroom",
+        description=f"{NAME}: a live dashboard for AI agent runs, plus a scheduled runner for Claude Code teams.",
+    )
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
     sub.add_parser("baseline")
@@ -858,10 +863,17 @@ def main() -> None:
     sub.add_parser("resume", help="lower the STOP flag")
     bp = sub.add_parser("brief")
     bp.add_argument("day", nargs="?", default=dt.date.today().isoformat())
-    dp = sub.add_parser("demo", help="run a PR/branch of a project locally and open it in the browser")
-    dp.add_argument("team")
-    dp.add_argument("target", nargs="?", help="PR number or branch (default: main)")
-    dp.add_argument("--no-install", action="store_true", help="skip the install step")
+    dp = sub.add_parser("demo", help="try the dashboard with realistic fake data (or, with a project: same as launch)")
+    dp.add_argument("team", nargs="?", help="(launch) project to run locally")
+    dp.add_argument("target", nargs="?", help="(launch) PR number or branch (default: main)")
+    dp.add_argument("--no-install", action="store_true", help="(launch) skip the install step")
+    dp.add_argument("--port", type=int, default=7777)
+    dp.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
+    lp = sub.add_parser("launch", help="run a project's PR or branch locally and open it in the browser")
+    lp.add_argument("team")
+    lp.add_argument("target", nargs="?", help="PR number or branch (default: main)")
+    lp.add_argument("--no-install", action="store_true", help="skip the install step")
+    cli_tools.add_parsers(sub)
     sub.add_parser("prs", help="list open agent PRs across all projects")
     wp = sub.add_parser("watch", help="open the live dashboard (http://127.0.0.1:7777 by default)")
     wp.add_argument("--port", type=int, default=7777)
@@ -872,9 +884,19 @@ def main() -> None:
 
         server.serve(open_browser=not args.no_browser, port=args.port)
         return
-    if args.cmd == "demo":
+    if args.cmd == "demo" and not args.team:
+        from controlroom import demo
+
+        sys.exit(demo.launch(port=args.port, open_browser=not args.no_browser))
+    if args.cmd in ("demo", "launch"):
         cmd_demo(args, meter.load_config())
         return
+    if args.cmd == "emit":
+        sys.exit(cli_tools.cmd_emit(args))
+    if args.cmd == "ingest":
+        sys.exit(cli_tools.cmd_ingest(args))
+    if args.cmd == "token":
+        sys.exit(cli_tools.cmd_token())
     if args.cmd == "prs":
         for team, t in meter.load_config()["teams"].items():
             for pr in open_prs(t):
