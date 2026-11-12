@@ -120,3 +120,47 @@ def test_parse_log_builds_the_feed(tmp_path):
     assert events[2]["status"] == "blocked"
     assert events[3]["status"] == "running" and events[3]["text"] == "→ tester: Run tests"
     assert usage["tokens"] == 15 and usage["calls"] == 1
+
+
+@pytest.fixture
+def built_app(tmp_path, monkeypatch):
+    static = tmp_path / "static"
+    (static / "assets").mkdir(parents=True)
+    (static / "index.html").write_text("<title>__APP_NAME__</title><script src=/assets/app-1a2b.js></script>")
+    (static / "assets" / "app-1a2b.js").write_text("console.log(1)")
+    (static / "favicon.svg").write_text("<svg/>")
+    monkeypatch.setattr(server.paths, "STATIC", static)
+    return static
+
+
+def test_built_app_is_served_with_security_headers(base_url, built_app):
+    with urllib.request.urlopen(base_url + "/") as r:
+        assert f"<title>{NAME}</title>" in r.read().decode()
+        assert "default-src 'self'" in r.headers["Content-Security-Policy"]
+        assert r.headers["X-Frame-Options"] == "DENY"
+    with urllib.request.urlopen(base_url + "/assets/app-1a2b.js") as r:
+        assert r.headers["Content-Type"].startswith("text/javascript")
+        assert "immutable" in r.headers["Cache-Control"]
+    with urllib.request.urlopen(base_url + "/favicon.svg") as r:
+        assert r.headers["Content-Type"] == "image/svg+xml"
+
+
+@pytest.mark.parametrize("path", ["/assets/..%2Findex.html", "/assets/missing.js", "/config.toml", "/assets/x.exe"])
+def test_only_known_static_files_are_served(base_url, built_app, path):
+    with pytest.raises(urllib.error.HTTPError) as e:
+        get(base_url + path)
+    assert e.value.code == 404
+
+
+def test_unbuilt_app_explains_how_to_build(base_url, tmp_path, monkeypatch):
+    monkeypatch.setattr(server.paths, "STATIC", tmp_path / "nothing-here")
+    _, body = get(base_url + "/")
+    assert "npm run build" in body.decode() and f"<title>{NAME}</title>" in body.decode()
+
+
+def test_overview_has_a_utc_timestamp_and_seven_days_of_usage(base_url):
+    _, body = get(base_url + "/api/overview")
+    ov = json.loads(body)
+    assert ov["generated_at"].endswith("Z") and ov["version"]
+    assert [d["date"] for d in ov["budget"]["daily"]] == sorted(d["date"] for d in ov["budget"]["daily"])
+    assert len(ov["budget"]["daily"]) == 7

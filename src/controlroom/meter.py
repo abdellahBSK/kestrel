@@ -147,16 +147,22 @@ def summary(cfg: dict, days: int = 7) -> dict:
     since = today0 - dt.timedelta(days=days - 1)
     data = scan(since)
     today = today0.date().isoformat()
-    res = {"today": {}, "week": {}}
+    res: dict = {"today": {}, "week": {}}
+    dates = [(today0 - dt.timedelta(days=i)).date().isoformat() for i in range(days - 1, -1, -1)]
+    daily = {d: {"date": d, "agents": 0, "personal": 0} for d in dates}
     for owner, per_day in data.items():
         wk = Counter()
         for c in per_day.values():
             wk.update(c)
         res["week"][owner] = weighted(wk, cfg)
         res["today"][owner] = weighted(per_day.get(today, Counter()), cfg)
+        for d, c in per_day.items():
+            if d in daily:
+                daily[d]["agents" if owner.startswith("team:") else "personal"] += weighted(c, cfg)
     for span in ("today", "week"):
         res[span]["agents"] = sum(v for k, v in res[span].items() if k.startswith("team:"))
         res[span].setdefault("personal", 0)
+    res["daily"] = list(daily.values())
     return res
 
 

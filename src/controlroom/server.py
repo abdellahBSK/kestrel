@@ -21,7 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from controlroom import NAME, meter, paths
+from controlroom import NAME, __version__, meter, paths
 from controlroom.runner import orchestrator as kingdom
 
 HQ = meter.HQ
@@ -72,6 +72,11 @@ def sessions(team: str, limit: int = 12) -> list[dict]:
             out.append({"id": f.stem, "path": f, "mtime": f.stat().st_mtime})
     out.sort(key=lambda s: s["mtime"], reverse=True)
     return out[:limit]
+
+
+def iso(epoch: float) -> str:
+    """Epoch seconds → ISO 8601 in UTC; the browser shows it in the viewer's own timezone."""
+    return dt.datetime.fromtimestamp(epoch, dt.UTC).isoformat().replace("+00:00", "Z")
 
 
 def short(text: str, n: int = 140) -> str:
@@ -253,7 +258,12 @@ def session_detail(team: str, sid: str | None) -> dict:
         "session": s["id"],
         "live": live,
         "sessions": [
-            {"id": x["id"], "when": dt.datetime.fromtimestamp(x["mtime"]).strftime("%a %d %b %H:%M")} for x in ss
+            {
+                "id": x["id"],
+                "when": dt.datetime.fromtimestamp(x["mtime"]).strftime("%a %d %b %H:%M"),
+                "updated_at": iso(x["mtime"]),
+            }
+            for x in ss
         ],
         **data,
     }
@@ -345,6 +355,7 @@ def overview() -> dict:
                 "allowance": cur.get("allowance") if running else 0,
                 "used": used,
                 "last_run": dt.datetime.fromtimestamp(last["mtime"]).strftime("%a %d %b %H:%M") if last else None,
+                "last_run_at": iso(last["mtime"]) if last else None,
                 "today_tokens": s["today"].get(f"team:{team}", 0),
                 "week_tokens": s["week"].get(f"team:{team}", 0),
                 "backlog": backlog_counts(team),
@@ -356,6 +367,9 @@ def overview() -> dict:
     b = c["budget"]
     return {
         "now": dt.datetime.now().strftime("%H:%M:%S"),
+        "generated_at": iso(time.time()),
+        "name": NAME,
+        "version": __version__,
         "stop": (HQ / "STOP").exists(),
         "running": cur,
         "budget": {
@@ -367,6 +381,7 @@ def overview() -> dict:
             "you_week": s["week"]["personal"],
             "pool": pool,
             "warn_at": b.get("warn_at", 0.8),
+            "daily": s["daily"],
         },
         "schedule": {d: c["schedule"].get(d, []) for d in kingdom.DAYS},
         "today": today,
@@ -424,6 +439,34 @@ def act(path: str, q: dict) -> dict:
 # ───────────────────────────── http ─────────────────────────────
 
 
+ASSET_TYPES = {
+    "js": "text/javascript; charset=utf-8",
+    "css": "text/css; charset=utf-8",
+    "woff2": "font/woff2",
+    "woff": "font/woff",
+    "svg": "image/svg+xml",
+    "png": "image/png",
+    "ico": "image/x-icon",
+}
+CSP = (
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+    "font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+)
+NOT_BUILT = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>__APP_NAME__</title></head>
+<body style="font:15px system-ui,sans-serif;max-width:560px;margin:15vh auto;padding:0 16px;line-height:1.5">
+<h1 style="font-size:20px">The __APP_NAME__ web app is not built</h1>
+<p>Build it once from the repository root, then reload this page:</p>
+<pre style="background:#f3f3f0;padding:12px;border-radius:8px">cd frontend
+npm ci
+npm run build</pre></body></html>"""
+
+
+def index_page() -> str:
+    f = paths.STATIC / "index.html"
+    page = f.read_text(encoding="utf-8") if f.is_file() else NOT_BUILT
+    return page.replace("__APP_NAME__", NAME)
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):  # quiet
         pass
@@ -431,11 +474,15 @@ class Handler(BaseHTTPRequestHandler):
     def _ok_host(self) -> bool:
         return self.headers.get("Host", "") in HOSTS
 
-    def _send(self, code: int, body: bytes, ctype: str) -> None:
+    def _send(self, code: int, body: bytes, ctype: str, cache: str = "no-store") -> None:
         self.send_response(code)
         self.send_header("Content-Type", ctype)
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache)
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        if ctype.startswith("text/html"):
+            self.send_header("Content-Security-Policy", CSP)
+            self.send_header("X-Frame-Options", "DENY")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -450,8 +497,15 @@ class Handler(BaseHTTPRequestHandler):
         q = parse_qs(u.query)
         try:
             if u.path in ("/", "/index.html"):
-                page = (paths.STATIC / "index.html").read_text(encoding="utf-8").replace("__APP_NAME__", NAME)
-                return self._send(200, page.encode(), "text/html; charset=utf-8")
+                return self._send(200, index_page().encode(), "text/html; charset=utf-8")
+            m = re.match(r"^/(assets/)?([A-Za-z0-9._-]+\.(js|css|woff2|woff|svg|png|ico))$", u.path)
+            if m:
+                folder = (paths.STATIC / (m.group(1) or "")).resolve()
+                f = (folder / m.group(2)).resolve()
+                if f.is_file() and f.parent == folder:
+                    # Vite puts a content hash in every file name under assets/, so those never change.
+                    cache = "public, max-age=31536000, immutable" if m.group(1) else "no-cache"
+                    return self._send(200, f.read_bytes(), ASSET_TYPES[m.group(3)], cache)
             if u.path == "/api/overview":
                 return self._json(overview())
             if u.path == "/api/session":
@@ -482,9 +536,11 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(res, 200 if res.get("ok") else 400)
 
 
-def serve(open_browser: bool = True) -> None:
-    srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    url = f"http://127.0.0.1:{PORT}"
+def serve(open_browser: bool = True, port: int = PORT) -> None:
+    global HOSTS
+    HOSTS = {f"127.0.0.1:{port}", f"localhost:{port}"}
+    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    url = f"http://127.0.0.1:{port}"
     print(f"{NAME}: {url}   (Ctrl+C to close)")
     if open_browser:
         import webbrowser

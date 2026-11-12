@@ -63,3 +63,14 @@ def test_summary_splits_personal_and_agent_usage(fake_claude_projects):
     assert s["today"]["agents"] == 300
     assert s["today"]["personal"] == 40
     assert s["week"]["agents"] == 300
+
+
+def test_summary_has_a_daily_series_ending_today(fake_claude_projects):
+    cfg = meter.load_config()
+    write_transcript(
+        team_project_dir(fake_claude_projects, "sandbox") / "a.jsonl", [usage_record(now_iso(), "t1", inp=70)]
+    )
+    daily = meter.summary(cfg)["daily"]
+    assert len(daily) == 7
+    assert daily[-1]["date"] == meter.start_of_today().date().isoformat()
+    assert daily[-1]["agents"] == 70 and daily[0]["agents"] == 0

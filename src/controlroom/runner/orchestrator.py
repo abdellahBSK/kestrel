@@ -811,12 +811,14 @@ def main() -> None:
     dp.add_argument("target", nargs="?", help="PR number or branch (default: main)")
     dp.add_argument("--no-install", action="store_true", help="skip the install step")
     sub.add_parser("prs", help="list open agent PRs across all projects")
-    sub.add_parser("watch", help="open the Control Room (live dashboard) at http://127.0.0.1:7777")
+    wp = sub.add_parser("watch", help="open the live dashboard (http://127.0.0.1:7777 by default)")
+    wp.add_argument("--port", type=int, default=7777)
+    wp.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
     args = p.parse_args()
     if args.cmd == "watch":
         from controlroom import server
 
-        server.serve()
+        server.serve(open_browser=not args.no_browser, port=args.port)
         return
     if args.cmd == "demo":
         cmd_demo(args, meter.load_config())
