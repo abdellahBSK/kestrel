@@ -1,10 +1,18 @@
-# Registers the daily Kingdom run in Windows Task Scheduler (current user, no admin needed).
+# Registers the daily run in Windows Task Scheduler (current user, no admin needed).
 # Triggers (all immediate): logon, unlock, wake from sleep, and daily 10:00 as a fallback.
-# kingdom.py makes sure it runs only ONCE per day and waits for the network itself,
+# The runner makes sure it runs only ONCE per day and waits for the network itself,
 # so extra triggers are harmless.
-#   Install:   powershell -ExecutionPolicy Bypass -File hq\install-schedule.ps1
-#   Remove:    powershell -ExecutionPolicy Bypass -File hq\install-schedule.ps1 -Remove
-param([switch]$Remove)
+#
+#   Install:   powershell -ExecutionPolicy Bypass -File install-schedule.ps1 [-HomeDir <folder>] [-Python <python.exe>]
+#   Remove:    powershell -ExecutionPolicy Bypass -File install-schedule.ps1 -Remove
+#
+#   -HomeDir the home folder (config.toml, teams/, state/). Default: $env:CONTROLROOM_HOME, else ~/.controlroom
+#   -Python  an interpreter that has the controlroom package installed. Default: `python` on PATH
+param(
+    [switch]$Remove,
+    [string]$HomeDir = "",
+    [string]$Python = ""
+)
 
 $TaskName = "Control Room runner"
 if ($Remove) {
@@ -13,13 +21,21 @@ if ($Remove) {
     return
 }
 
-# Home folder: $env:CONTROLROOM_HOME, or ~/.controlroom (same rule as the Python code).
-$hq = if ($env:CONTROLROOM_HOME) { $env:CONTROLROOM_HOME } else { Join-Path $HOME ".controlroom" }
-$python = (& python -c "import sys; print(sys.executable)").Trim()   # real interpreter, not the WindowsApps alias
+$hq = if ($HomeDir) { $HomeDir } elseif ($env:CONTROLROOM_HOME) { $env:CONTROLROOM_HOME } else { Join-Path $HOME ".controlroom" }
+$hq = (Resolve-Path -LiteralPath $hq -ErrorAction Stop).Path
+if (-not (Test-Path -LiteralPath (Join-Path $hq "config.toml"))) {
+    throw "No config.toml in $hq. Copy config.example.toml there first."
+}
+# The real interpreter, not the WindowsApps alias.
+$py = if ($Python) { $Python } else { (& python -c "import sys; print(sys.executable)").Trim() }
+& $py -c "import controlroom" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    throw "$py cannot import controlroom. Pass -Python with the interpreter you installed it into."
+}
 $user = "$env:USERDOMAIN\$env:USERNAME"
 
 $action = New-ScheduledTaskAction -Execute "powershell.exe" `
-    -Argument "-NoProfile -WindowStyle Hidden -Command `"`$env:CONTROLROOM_HOME='$hq'; & '$python' -m controlroom run`"" `
+    -Argument "-NoProfile -WindowStyle Hidden -Command `"`$env:CONTROLROOM_HOME='$hq'; & '$py' -m controlroom run`"" `
     -WorkingDirectory $hq
 
 $logon = New-ScheduledTaskTrigger -AtLogOn -User $user
@@ -40,4 +56,5 @@ $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -Ru
 
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger @($logon, $unlock, $wake, $daily) `
     -Settings $settings -Principal $principal -Force | Out-Null
-Write-Host "Registered '$TaskName': starts as soon as you log on, unlock or wake the laptop (once per day)."
+Write-Host "Registered '$TaskName' for $hq with $py"
+Write-Host "It starts as soon as you log on, unlock or wake the computer (once per day)."
