@@ -255,10 +255,12 @@ def test_install_refuses_a_broken_settings_file(tmp_path):
     assert settings.read_text() == "{ not json"
 
 
-def test_the_hook_command_names_this_python_and_home(home):
+def test_the_hook_command_names_this_python_and_home():
+    from kestrel import paths
+
     cmd = hook_cli.hook_command("C:\\Python\\python.exe")
     assert cmd.startswith('"C:/Python/python.exe" -m kestrel hook claude-code --home "')
-    assert home.as_posix() in cmd
+    assert cmd.endswith(f'"{paths.HOME.as_posix()}"')  # resolved: no 8.3 short names on Windows
 
 
 # ───────────────────────────── Claude Agent SDK ─────────────────────────────
