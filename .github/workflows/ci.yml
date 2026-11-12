@@ -58,6 +58,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.11", "3.12", "3.13"]
+        exclude:  # macOS runners are scarce: one version there, all three on Linux and Windows
+          - os: macos-latest
+            python: "3.11"
+          - os: macos-latest
+            python: "3.12"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
