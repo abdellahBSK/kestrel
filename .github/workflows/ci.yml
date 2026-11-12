@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   lint:
+    name: Lint (Python)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,10 +22,11 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -e ".[dev]"
-      - run: ruff check .
+      - run: ruff check --output-format=github .
       - run: ruff format --check .
 
   web:
+    name: Web app
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -42,8 +44,14 @@ jobs:
       - run: npm run format:check
       - run: npm test
       - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-app
+          path: src/kestrel/static
+          retention-days: 7
 
   test:
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -56,4 +64,29 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install -e ".[dev]"
-      - run: pytest
+      - run: pytest --cov=kestrel --cov-report=term-missing:skip-covered
+
+  package:
+    name: Package
+    needs: web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-app
+          path: src/kestrel/static
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install build twine
+      - run: python -m build
+      - run: twine check --strict dist/*
+      - name: The wheel ships the dashboard and serves the demo
+        run: |
+          unzip -l dist/*.whl | grep -q "kestrel/static/index.html"
+          python -m venv /tmp/w && /tmp/w/bin/pip install dist/*.whl
+          /tmp/w/bin/kestrel --version
+          /tmp/w/bin/kestrel demo --no-browser --port 7799 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:7799/v1/health && break; sleep 1; done
+          curl -sf http://127.0.0.1:7799/ | grep -q '<div id="root">'

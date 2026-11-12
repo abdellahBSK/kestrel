@@ -1,0 +1,14 @@
+# docker compose up            → the dashboard on http://127.0.0.1:7777
+# docker compose run --rm --service-ports kestrel demo --no-browser   → the demo instead
+services:
+  kestrel:
+    build: .
+    image: ghcr.io/abdellahbsk/kestrel:latest
+    ports:
+      - "127.0.0.1:7777:7777" # loopback only: never expose your agents' activity to the network
+    volumes:
+      - kestrel-data:/data
+    restart: unless-stopped
+
+volumes:
+  kestrel-data:

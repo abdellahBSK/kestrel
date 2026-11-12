@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest something Kestrel should do. Larger features become a spec.
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Kestrel is built [spec-first](../blob/main/specs/README.md). Start with the problem; we'll
+        work out the solution together. Please check the [roadmap](../blob/main/specs/001-kestrel-v0.1/tasks.md) first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way today?
+      placeholder: When my agent runs overnight I can't tell in the morning whether...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you'd like
+      description: How you imagine it working. Mock-ups welcome.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contributing
+      options:
+        - label: I'd like to write the spec or implement this.

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and ideas
+    url: https://github.com/abdellahBSK/kestrel/discussions
+    about: Ask how to do something, share your setup, or float an idea before writing a request.
+  - name: Report a security vulnerability
+    url: https://github.com/abdellahBSK/kestrel/security/advisories/new
+    about: Please report security issues privately.

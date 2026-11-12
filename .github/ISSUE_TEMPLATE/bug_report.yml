@@ -1,0 +1,62 @@
+name: Bug report
+description: Something shows the wrong thing, crashes, or doesn't work as documented.
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please **remove secrets and private paths** from anything you paste.
+        Security issues go to [private advisories](../security/advisories/new), not here.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead. Screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. kestrel demo
+        2. Open the storefront project
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Kestrel version
+      description: Output of `kestrel --version`, or the commit you run.
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Linux, macOS, Windows, Docker, Other]
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+  - type: dropdown
+    id: source
+    attributes:
+      label: Where do the events come from?
+      multiple: true
+      options:
+        - Python client (Reporter)
+        - kestrel emit / ingest
+        - HTTP POST /v1/events
+        - Claude Code adapter or runner
+        - Demo mode
+        - Other
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or events
+      description: Terminal output, or the events that produce the problem (redacted).
+      render: shell

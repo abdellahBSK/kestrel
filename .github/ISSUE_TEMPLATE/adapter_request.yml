@@ -1,0 +1,27 @@
+name: Adapter request
+description: Ask for (or offer to build) support for an agent framework or tool.
+labels: ["adapter", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Any framework can already report through the [event format](../blob/main/docs/events.md).
+        An adapter makes it automatic. Upvote existing requests with 👍 instead of duplicating them.
+  - type: input
+    id: framework
+    attributes:
+      label: Framework or tool
+      placeholder: e.g. LangGraph, CrewAI, AutoGen, OpenAI Agents SDK, Aider, Codex CLI
+    validations:
+      required: true
+  - type: textarea
+    id: hooks
+    attributes:
+      label: How could Kestrel get its events?
+      description: Callbacks or hooks it offers, log files it writes, an OpenTelemetry exporter...
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contributing
+      options:
+        - label: I'd like to build this adapter.
