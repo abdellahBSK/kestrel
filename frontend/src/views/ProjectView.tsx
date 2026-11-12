@@ -14,7 +14,8 @@ import { Tabs } from "radix-ui";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ActivityFeed } from "@/components/ActivityFeed";
-import { AgentsTable, agentState } from "@/components/AgentsTable";
+import { AgentsTable } from "@/components/AgentsTable";
+import { HealthDot } from "@/components/Sidebar";
 import { BacklogPanel } from "@/components/BacklogPanel";
 import { PullRequestsPanel } from "@/components/PullRequestsPanel";
 import { Button } from "@/components/ui/button";
@@ -27,9 +28,10 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "@/components/ui/overlays";
-import { Badge, Card, EmptyState, KeyBadge, Meter, Skeleton, StatusDot } from "@/components/ui/primitives";
+import { Badge, Card, EmptyState, KeyBadge, Meter, Skeleton } from "@/components/ui/primitives";
 import { action, type Overview, type Session } from "@/lib/api";
-import { dateTime, duration, integer, relative, tokens } from "@/lib/format";
+import { clock, dateTime, duration, integer, relative, tokens } from "@/lib/format";
+import { HEALTH } from "@/lib/health";
 import { useSession } from "@/lib/queries";
 import { navigate, type Tab } from "@/lib/router";
 import { cn } from "@/lib/utils";
@@ -46,7 +48,7 @@ function Stat({
   return (
     <div className={cn("min-w-0 px-4 py-3.5", className)}>
       <div className="text-muted text-[12px]">{label}</div>
-      <div className="mt-1 truncate text-[15px] font-semibold tracking-tight">{children}</div>
+      <div className="mt-1 text-[15px] leading-snug font-semibold tracking-tight">{children}</div>
     </div>
   );
 }
@@ -71,10 +73,7 @@ export function ProjectView({ ov, team, tab }: { ov: Overview | undefined; team:
 
   const span = useMemo(() => sessionSpan(s), [s]);
   const runTokens = useMemo(() => (s?.agents ?? []).reduce((a, x) => a + x.tokens, 0), [s]);
-  const working = useMemo(
-    () => (s?.agents ?? []).filter((a) => agentState(a, !!s?.live, s?.events ?? []).key === "working").length,
-    [s],
-  );
+  const working = useMemo(() => (s?.agents ?? []).filter((a) => a.state === "working").length, [s]);
 
   if (!ov) return <ProjectSkeleton />;
   if (!t)
@@ -118,16 +117,16 @@ export function ProjectView({ ov, team, tab }: { ov: Overview | undefined; team:
             <Menu>
               <MenuTrigger asChild>
                 <Button variant="secondary">
-                  <span className="text-muted">Run</span>
-                  {current?.updated_at ? dateTime(current.updated_at) : current?.when}
+                  <span className="text-muted">Started</span>
+                  {dateTime(current?.started_at ?? current?.updated_at)}
                   <ChevronDown className="text-muted" />
                 </Button>
               </MenuTrigger>
               <MenuContent>
-                <MenuLabel>Past runs (last activity)</MenuLabel>
+                <MenuLabel>Runs, by start time</MenuLabel>
                 {s.sessions.map((x, i) => (
                   <MenuItem key={x.id} checked={x.id === s.session} onSelect={() => setSessionId(x.id)}>
-                    {x.updated_at ? dateTime(x.updated_at) : x.when}
+                    {dateTime(x.started_at ?? x.updated_at)}
                     {i === 0 && <span className="text-muted ml-2 text-[11.5px]">latest</span>}
                   </MenuItem>
                 ))}
@@ -163,13 +162,13 @@ export function ProjectView({ ov, team, tab }: { ov: Overview | undefined; team:
         </div>
       </div>
 
+      {isLatest && <HealthCallout t={t} />}
+
       <Card className="divide-line [&>*]:border-line mt-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 lg:divide-x max-lg:[&>*]:border-b">
         <Stat label="Status">
           <span className="inline-flex items-center gap-2">
-            <StatusDot
-              status={t.running ? (ov.stop ? "stopped" : "working") : t.last_run_at ? "idle" : "never"}
-            />
-            {t.running ? (ov.stop ? "Stopping" : "Running") : t.last_run_at ? "Idle" : "Never run"}
+            <HealthDot t={t} ov={ov} />
+            {t.running && ov.stop ? "Stopping" : HEALTH[t.health].label}
           </span>
         </Stat>
         <Stat label={t.running && isLatest ? "This run" : "Run tokens"}>
@@ -283,6 +282,60 @@ function ProjectSkeleton() {
       <Skeleton className="h-[74px] rounded-xl" />
       <Skeleton className="h-10 w-96" />
       <Skeleton className="h-96 rounded-xl" />
+    </div>
+  );
+}
+
+function HealthCallout({ t }: { t: Overview["teams"][number] }) {
+  const notes: Partial<
+    Record<typeof t.health, { title: string; body: string; tone: "critical" | "warning" }>
+  > = {
+    lost: {
+      tone: "critical",
+      title: "This run was lost",
+      body: `Its runner stopped before the run finished (a crash, sleep or a closed window). The last agent activity was at ${clock(t.last_run_at, false)}, and no agent is working on it now. The next run records it and notes any uncommitted work in STATE.md for review. You can start a new run now.`,
+    },
+    stale: {
+      tone: "warning",
+      title: "An agent may be stuck",
+      body: "The run is alive, but at least one agent has shown no activity for a long time. Check the Agents tab; Stop all halts it at its next action.",
+    },
+    failed: {
+      tone: "critical",
+      title: "The last run failed",
+      body: "It ended with an error. The run's report and the activity feed show what happened.",
+    },
+    incomplete: {
+      tone: "warning",
+      title: "The last run left work unfinished",
+      body: "It ended while an agent was still mid-task, so that agent's work may be missing. The Agents tab shows which one was cut off.",
+    },
+  };
+  const n = notes[t.health];
+  if (!n) return null;
+  return (
+    <div
+      role="status"
+      className={cn(
+        "mt-5 flex gap-3 rounded-xl border px-4 py-3",
+        n.tone === "critical"
+          ? "border-critical/35 bg-critical/[0.06]"
+          : "border-warning/45 bg-warning/[0.08]",
+      )}
+    >
+      <HealthDot t={t} ov={{ stop: false } as Overview} className="mt-1.5" />
+      <div className="min-w-0">
+        <p className="text-[13.5px] font-semibold">{n.title}</p>
+        <p className="text-ink-2 mt-0.5 text-[13px] leading-relaxed">{n.body}</p>
+      </div>
+      {t.health !== "stale" && t.health !== "lost" && (
+        <button
+          onClick={() => navigate({ view: "project", team: t.team, tab: "agents" })}
+          className="text-ink ml-auto shrink-0 self-center text-[12.5px] font-medium underline-offset-2 hover:underline"
+        >
+          View agents
+        </button>
+      )}
     </div>
   );
 }

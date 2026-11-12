@@ -12,6 +12,20 @@ export type PullRequest = {
   reviewDecision: string;
 };
 
+/** Project health, decided by the server (src/controlroom/status.py). */
+export type Health = "running" | "stale" | "lost" | "failed" | "incomplete" | "idle" | "never";
+export type AgentState = "working" | "waiting" | "idle" | "stale" | "finished" | "lost" | "failed";
+
+export type Run = {
+  team: string;
+  session: string;
+  since: number;
+  started_at?: string;
+  allowance: number;
+  state: "running" | "lost";
+  last_heartbeat: number;
+};
+
 export type Team = {
   team: string;
   title: string;
@@ -21,11 +35,14 @@ export type Team = {
   enabled: boolean;
   scheduled_today: boolean;
   running: boolean;
+  run_state: "running" | "lost" | null;
+  health: Health;
+  heartbeat_at: string | null;
   now: { agent: string; text: string; ts: string } | null;
   allowance: number;
   used: number;
-  last_run: string | null;
-  last_run_at?: string | null;
+  started_at: string | null;
+  last_run_at: string | null;
   today_tokens: number;
   week_tokens: number;
   backlog: BacklogCounts;
@@ -37,12 +54,13 @@ export type Team = {
 export type DailyUsage = { date: string; agents: number; personal: number };
 
 export type Overview = {
-  now: string;
-  generated_at?: string;
-  name?: string;
-  version?: string;
+  generated_at: string;
+  utc_offset_min: number;
+  name: string;
+  version: string;
   stop: boolean;
-  running: { team: string; session: string; since: number; allowance: number } | null;
+  running: Run | null;
+  lost_run: Run | null;
   budget: {
     agents_today: number;
     agents_daily: number;
@@ -52,7 +70,7 @@ export type Overview = {
     you_week: number;
     pool: number;
     warn_at: number;
-    daily?: DailyUsage[];
+    daily: DailyUsage[];
   };
   schedule: Record<string, string[]>;
   today: string;
@@ -72,7 +90,9 @@ export type FeedEvent = {
 export type Agent = {
   role: string;
   description: string;
+  state: AgentState;
   finished: boolean;
+  last_activity: string;
   tokens: number;
   actions: number;
   model: string;
@@ -83,8 +103,9 @@ export type Agent = {
 export type Session = {
   team: string;
   session: string | null;
-  live?: boolean;
-  sessions: { id: string; when: string; updated_at?: string }[];
+  live: boolean;
+  started_at?: string | null;
+  sessions: { id: string; started_at: string | null; updated_at: string }[];
   events: FeedEvent[];
   agents: Agent[];
 };

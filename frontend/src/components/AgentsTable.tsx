@@ -1,69 +1,36 @@
-import { CircleCheck, CircleDashed, Users } from "lucide-react";
-import type { Agent, FeedEvent, Session } from "@/lib/api";
-import { clock, duration, integer, shortModel, tokens } from "@/lib/format";
+import { CircleCheck, CircleDashed, CircleX, Hourglass, Users } from "lucide-react";
+import type { Agent, Session } from "@/lib/api";
+import { clock, duration, integer, relative, shortModel, tokens } from "@/lib/format";
+import { AGENT } from "@/lib/health";
 import { cn, roleColor } from "@/lib/utils";
 import { Card, EmptyState, RoleChip, Tooltip } from "./ui/primitives";
 
-const QUIET_AFTER_MIN = 5;
-
-type State = { key: "working" | "quiet" | "finished" | "unfinished"; label: string; hint: string };
-
-/**
- * What we can honestly say about an agent. The logs only tell us whether an agent wrote a "finished"
- * marker, so an agent without it in a run that is no longer live did NOT finish: it was cut off.
- */
-export function agentState(a: Agent, live: boolean, events: FeedEvent[]): State {
-  if (a.finished) return { key: "finished", label: "Finished", hint: "Reported back to the lead" };
-  if (!live)
-    return {
-      key: "unfinished",
-      label: "Didn't finish",
-      hint: "The run ended before this agent reported back, so its last task may be incomplete",
-    };
-  const last =
-    a.role === "lead"
-      ? [...events].reverse().find((e) => e.agent === "lead" && e.ts)?.ts
-      : (a.end ?? undefined);
-  const quietMin = last ? (Date.now() - new Date(last).getTime()) / 60000 : 0;
-  if (quietMin > QUIET_AFTER_MIN)
-    return {
-      key: "quiet",
-      label: `Quiet for ${Math.round(quietMin)}m`,
-      hint: "No new activity recently: it may be running a long command, or it may be stuck",
-    };
-  return { key: "working", label: "Working", hint: "Active in the current run" };
-}
-
-function StateLabel({ s }: { s: State }) {
-  const content = {
-    working: (
-      <span className="text-good-ink inline-flex items-center gap-1.5">
-        <span className="animate-pulse-ring bg-good size-2 rounded-full" />
-        {s.label}
-      </span>
-    ),
-    quiet: (
-      <span className="text-ink inline-flex items-center gap-1.5">
-        <span className="bg-warning size-2 rounded-full" />
-        {s.label}
-      </span>
-    ),
-    finished: (
-      <span className="text-ink-2 inline-flex items-center gap-1.5">
-        <CircleCheck className="text-muted size-3.5" />
-        {s.label}
-      </span>
-    ),
-    unfinished: (
-      <span className="text-ink inline-flex items-center gap-1.5">
-        <CircleDashed className="text-serious size-3.5" />
-        {s.label}
-      </span>
-    ),
-  }[s.key];
+/** The agent's state as decided by the server (status.py), with an icon so color is never alone. */
+export function AgentStateLabel({ a }: { a: Agent }) {
+  const meta = AGENT[a.state];
+  const quiet =
+    a.state === "idle" || a.state === "stale" ? ` · ${relative(a.last_activity).replace(" ago", "")}` : "";
+  const icon = {
+    working: <span className="bg-good animate-pulse-ring size-2 rounded-full" />,
+    waiting: <Hourglass className="text-muted size-3.5" />,
+    idle: <span className="bg-muted/60 size-2 rounded-full" />,
+    stale: <span className="bg-warning ring-warning/30 size-2 rounded-full ring-2" />,
+    finished: <CircleCheck className="text-muted size-3.5" />,
+    lost: <CircleDashed className="text-serious size-3.5" />,
+    failed: <CircleX className="text-critical size-3.5" />,
+  }[a.state];
   return (
-    <Tooltip content={s.hint}>
-      <span className="cursor-default text-[12.5px] whitespace-nowrap">{content}</span>
+    <Tooltip content={`${meta.hint} Last activity ${clock(a.last_activity, false)}.`}>
+      <span
+        className={cn(
+          "inline-flex cursor-default items-center gap-1.5 text-[12.5px] whitespace-nowrap",
+          a.state === "working" ? "text-good-ink" : a.state === "finished" ? "text-ink-2" : "text-ink",
+        )}
+      >
+        {icon}
+        {meta.label}
+        {quiet}
+      </span>
     </Tooltip>
   );
 }
@@ -78,16 +45,10 @@ export function AgentsTable({ session }: { session: Session | undefined }) {
         </EmptyState>
       </Card>
     );
-  const events = session?.events ?? [];
-  const lead = agents[0]!;
-  const subs = [...agents.slice(1)].sort((a, b) => (a.start ?? "").localeCompare(b.start ?? ""));
+  const [lead, ...rest] = agents;
+  const subs = [...rest].sort((a, b) => (a.start ?? "").localeCompare(b.start ?? ""));
   const maxTokens = Math.max(...agents.map((a) => a.tokens), 1);
-  const leadTimes = events.filter((e) => e.agent === "lead" && e.ts).map((e) => e.ts!);
-  const leadSpan = { start: leadTimes[0] ?? null, end: leadTimes[leadTimes.length - 1] ?? null };
-  const rows = [
-    { a: { ...lead, start: leadSpan.start, end: leadSpan.end }, child: false },
-    ...subs.map((a) => ({ a, child: true })),
-  ];
+  const rows = [{ a: lead!, child: false }, ...subs.map((a) => ({ a, child: true }))];
 
   return (
     <Card className="overflow-hidden">
@@ -105,7 +66,7 @@ export function AgentsTable({ session }: { session: Session | undefined }) {
           </thead>
           <tbody>
             {rows.map(({ a, child }, i) => {
-              const st = agentState(a, !!session?.live, events);
+              const ongoing = a.state === "working" || a.state === "waiting" || a.state === "idle";
               return (
                 <tr key={i} className="border-line hover:bg-surface-2/40 border-b last:border-0">
                   <td className="py-2.5 pr-3 pl-4">
@@ -120,7 +81,7 @@ export function AgentsTable({ session }: { session: Session | undefined }) {
                     </div>
                   </td>
                   <td className="px-3 py-2.5">
-                    <StateLabel s={st} />
+                    <AgentStateLabel a={a} />
                   </td>
                   <td className="text-ink-2 px-3 py-2.5 whitespace-nowrap">
                     {a.model ? shortModel(a.model) : "–"}
@@ -132,7 +93,7 @@ export function AgentsTable({ session }: { session: Session | undefined }) {
                         {clock(a.start, false)}
                         <span className="text-muted">
                           {" "}
-                          · {duration(a.start, st.key === "working" ? new Date().toISOString() : a.end)}
+                          · {duration(a.start, ongoing ? new Date().toISOString() : a.end)}
                         </span>
                       </>
                     ) : (

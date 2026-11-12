@@ -1,6 +1,6 @@
 import { ArrowUpRight, CalendarDays, FolderGit2, GitPullRequest, MessageSquare } from "lucide-react";
 import { BacklogBar } from "@/components/BacklogBar";
-import { sortTeams, teamHealth } from "@/components/Sidebar";
+import { HealthDot, sortTeams, teamSummary } from "@/components/Sidebar";
 import { UsageChart } from "@/components/UsageChart";
 import {
   Card,
@@ -9,11 +9,10 @@ import {
   Meter,
   SectionTitle,
   Skeleton,
-  StatusDot,
   Tooltip,
 } from "@/components/ui/primitives";
 import type { Overview } from "@/lib/api";
-import { clock, integer, percent, relative, tokens } from "@/lib/format";
+import { clock, integer, percent, tokens } from "@/lib/format";
 import { href } from "@/lib/router";
 import { cn } from "@/lib/utils";
 
@@ -178,7 +177,7 @@ export function OverviewView({ ov }: { ov: Overview | undefined }) {
               </thead>
               <tbody>
                 {teams.map((t) => {
-                  const health = teamHealth(t, ov);
+                  const summary = teamSummary(t);
                   const total = Object.values(t.backlog).reduce((a, c) => a + c, 0);
                   return (
                     <tr
@@ -190,7 +189,7 @@ export function OverviewView({ ov }: { ov: Overview | undefined }) {
                           href={href({ view: "project", team: t.team, tab: "activity" })}
                           className="flex items-center gap-2.5"
                         >
-                          <StatusDot status={health} />
+                          <HealthDot t={t} ov={ov} />
                           <span className="text-ink font-medium group-hover:underline group-hover:underline-offset-2">
                             {t.team}
                           </span>
@@ -206,10 +205,12 @@ export function OverviewView({ ov }: { ov: Overview | undefined }) {
                       <td className="px-3 py-3 whitespace-nowrap">
                         {t.running ? (
                           <span className="text-good-ink">Running · {tokens(t.used)} used</span>
-                        ) : t.last_run_at ? (
-                          <span className="text-ink-2">Ran {relative(t.last_run_at)}</span>
                         ) : (
-                          <span className="text-muted">Not run yet</span>
+                          <span
+                            className={summary.className === "text-muted" ? "text-ink-2" : summary.className}
+                          >
+                            {summary.text}
+                          </span>
                         )}
                         {t.scheduled_today && !t.running && (
                           <span className="text-muted ml-2 text-[11.5px]">· scheduled today</span>

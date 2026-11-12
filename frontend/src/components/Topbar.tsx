@@ -3,11 +3,12 @@ import { Menu as MenuIcon, OctagonX, Play, Search } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { action, type Overview } from "@/lib/api";
-import { duration } from "@/lib/format";
+import { clock, duration } from "@/lib/format";
+import { HEALTH } from "@/lib/health";
 import { href, type Route } from "@/lib/router";
 import { Button } from "./ui/button";
 import { ConfirmDialog } from "./ui/overlays";
-import { Kbd, StatusDot } from "./ui/primitives";
+import { Kbd, StatusDot, Tooltip } from "./ui/primitives";
 
 export function useStopControls() {
   const qc = useQueryClient();
@@ -31,10 +32,26 @@ function GlobalStatus({ ov }: { ov: Overview | undefined }) {
   if (ov.stop)
     return (
       <span className="border-critical/40 bg-critical/10 text-critical-ink inline-flex h-7 items-center gap-2 rounded-full border px-3 text-[12.5px] font-medium">
-        <StatusDot status="stopped" />
+        <StatusDot status="stopping" />
         STOP raised
       </span>
     );
+  if (ov.lost_run) {
+    const lost = ov.lost_run;
+    return (
+      <Tooltip
+        content={`${HEALTH.lost.hint} Last heartbeat ${clock(new Date(lost.last_heartbeat * 1000).toISOString())}.`}
+      >
+        <a
+          href={href({ view: "project", team: lost.team, tab: "agents" })}
+          className="border-critical/40 bg-critical/10 text-critical-ink hover:bg-critical/15 inline-flex h-7 items-center gap-2 rounded-full border px-3 text-[12.5px] font-medium transition-colors"
+        >
+          <StatusDot status="lost" />
+          {lost.team}: run lost
+        </a>
+      </Tooltip>
+    );
+  }
   if (ov.running) {
     const since = new Date(ov.running.since * 1000).toISOString();
     return (
@@ -42,7 +59,7 @@ function GlobalStatus({ ov }: { ov: Overview | undefined }) {
         href={href({ view: "project", team: ov.running.team, tab: "activity" })}
         className="border-good/35 bg-good/10 text-good-ink hover:bg-good/15 inline-flex h-7 items-center gap-2 rounded-full border px-3 text-[12.5px] font-medium transition-colors"
       >
-        <StatusDot status="working" />
+        <StatusDot status="running" />
         {ov.running.team} running
         <span className="text-good-ink/80 tabular font-normal">
           {duration(since, new Date().toISOString())}

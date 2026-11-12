@@ -8,7 +8,8 @@ import { Topbar, useStopControls } from "@/components/Topbar";
 import { appName } from "@/lib/api";
 import { useOverview } from "@/lib/queries";
 import { useRoute } from "@/lib/router";
-import { useTheme } from "@/lib/theme";
+import { setDisplayOffset } from "@/lib/format";
+import { useTheme, useTimePref } from "@/lib/theme";
 import { OverviewView } from "@/views/OverviewView";
 import { ProjectView } from "@/views/ProjectView";
 
@@ -16,6 +17,9 @@ export function App() {
   const route = useRoute();
   const { pref, set: setTheme } = useTheme();
   const { data: ov, isError, failureCount } = useOverview();
+  const tz = useTimePref();
+  // Set before the children render, so every time on the page uses the same clock.
+  setDisplayOffset(tz.pref === "computer" && ov ? ov.utc_offset_min : null);
   const controls = useStopControls();
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -33,7 +37,15 @@ export function App() {
   }, [ov?.running, route]);
 
   const sidebar = (onNavigate?: () => void) => (
-    <Sidebar ov={ov} route={route} theme={pref} setTheme={setTheme} onNavigate={onNavigate} />
+    <Sidebar
+      ov={ov}
+      route={route}
+      theme={pref}
+      setTheme={setTheme}
+      tz={tz.pref}
+      setTz={tz.set}
+      onNavigate={onNavigate}
+    />
   );
 
   return (

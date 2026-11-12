@@ -1,4 +1,31 @@
-// Formatting helpers. Every timestamp from the server is UTC; we render it in the viewer's timezone.
+// Formatting helpers. Every timestamp from the server is UTC; it is shown either in the browser's
+// timezone or at a fixed UTC offset (this computer's clock), as the viewer chooses. The two can
+// disagree when the browser's timezone data is out of date for a zone (it happened for Morocco).
+
+let displayOffsetMin: number | null = null;
+
+/** null = the browser's own timezone; a number = show times at this UTC offset, in minutes. */
+export function setDisplayOffset(min: number | null) {
+  displayOffsetMin = min;
+}
+
+export function browserOffsetMin(at = new Date()): number {
+  return -at.getTimezoneOffset();
+}
+
+export function offsetLabel(min: number): string {
+  const sign = min < 0 ? "−" : "+";
+  const a = Math.abs(min);
+  return `UTC${sign}${String(Math.floor(a / 60)).padStart(2, "0")}:${String(a % 60).padStart(2, "0")}`;
+}
+
+function format(ts: string, opts: Intl.DateTimeFormatOptions): string {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "";
+  if (displayOffsetMin === null) return new Intl.DateTimeFormat([], opts).format(d);
+  const shifted = new Date(d.getTime() + displayOffsetMin * 60_000);
+  return new Intl.DateTimeFormat([], { ...opts, timeZone: "UTC" }).format(shifted);
+}
 
 export function tokens(n: number | null | undefined): string {
   const v = n ?? 0;
@@ -18,23 +45,23 @@ export function percent(part: number, whole: number): string {
 
 export function clock(ts: string | null | undefined, seconds = true): string {
   if (!ts) return "";
-  return new Date(ts).toLocaleTimeString([], {
+  return format(ts, {
     hour: "2-digit",
     minute: "2-digit",
     ...(seconds ? { second: "2-digit" } : {}),
-    hour12: false,
+    hourCycle: "h23",
   });
 }
 
 export function dateTime(ts: string | null | undefined): string {
   if (!ts) return "";
-  return new Date(ts).toLocaleString([], {
+  return format(ts, {
     weekday: "short",
     day: "numeric",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
+    hourCycle: "h23",
   });
 }
 

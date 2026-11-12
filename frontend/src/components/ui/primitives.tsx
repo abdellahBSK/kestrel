@@ -1,5 +1,6 @@
 import { Tooltip as T } from "radix-ui";
 import type { HTMLAttributes, ReactNode } from "react";
+import type { Health } from "@/lib/api";
 import { cn, roleColor, roleLabel } from "@/lib/utils";
 
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
@@ -113,18 +114,21 @@ export function RoleChip({ role, className }: { role: string; className?: string
   );
 }
 
-export type Health = "working" | "idle" | "stopped" | "finished" | "never" | "attention";
+export type DotStatus = Health | "stopping";
 
-export function StatusDot({ status, className }: { status: Health; className?: string }) {
-  const color = {
-    working: "bg-good animate-pulse-ring",
-    attention: "bg-warning",
-    stopped: "bg-critical",
+/** A status dot. Shape varies with color (pulse, ring, hollow) so state never rests on hue alone. */
+export function StatusDot({ status, className }: { status: DotStatus; className?: string }) {
+  const look: Record<DotStatus, string> = {
+    running: "bg-good animate-pulse-ring",
+    stale: "bg-warning ring-2 ring-warning/30",
+    lost: "bg-critical ring-2 ring-critical/25",
+    failed: "bg-critical",
+    stopping: "bg-critical animate-pulse",
+    incomplete: "border-2 border-warning bg-transparent",
     idle: "bg-muted/60",
-    finished: "bg-muted/60",
     never: "border border-muted/70 bg-transparent",
-  }[status];
-  return <span className={cn("inline-block size-2 shrink-0 rounded-full", color, className)} />;
+  };
+  return <span className={cn("inline-block size-2 shrink-0 rounded-full", look[status], className)} />;
 }
 
 /** A thin usage meter with an optional warning tick. Without a cap it renders nothing. */

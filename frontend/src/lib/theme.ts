@@ -3,6 +3,29 @@ import { useCallback, useEffect, useState } from "react";
 export type ThemePref = "system" | "light" | "dark";
 const KEY = "cr.theme";
 
+/** Which clock times are shown in: this computer's (the server's UTC offset) or the browser's zone. */
+export type TimePref = "computer" | "browser";
+const TZ_KEY = "cr.tz";
+
+export function useTimePref() {
+  const [pref, setPref] = useState<TimePref>(() => {
+    try {
+      return localStorage.getItem(TZ_KEY) === "browser" ? "browser" : "computer";
+    } catch {
+      return "computer";
+    }
+  });
+  const set = useCallback((next: TimePref) => {
+    try {
+      localStorage.setItem(TZ_KEY, next);
+    } catch {
+      /* private mode: the choice lasts for this tab only */
+    }
+    setPref(next);
+  }, []);
+  return { pref, set };
+}
+
 function read(): ThemePref {
   try {
     const v = localStorage.getItem(KEY);

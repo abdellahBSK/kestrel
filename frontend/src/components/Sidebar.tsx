@@ -1,6 +1,8 @@
 import {
   ChevronRight,
+  Clock3,
   GitPullRequest,
+  Globe,
   LayoutDashboard,
   MessageSquare,
   Monitor,
@@ -10,29 +12,70 @@ import {
 import { useState } from "react";
 import type { Overview, Team } from "@/lib/api";
 import { appName } from "@/lib/api";
-import { relative } from "@/lib/format";
+import { browserOffsetMin, offsetLabel, relative } from "@/lib/format";
+import type { TimePref } from "@/lib/theme";
+import { HEALTH, HEALTH_ORDER } from "@/lib/health";
 import { href, type Route } from "@/lib/router";
 import type { ThemePref } from "@/lib/theme";
-import { cn } from "@/lib/utils";
-import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from "./ui/overlays";
-import { StatusDot, Tooltip, type Health } from "./ui/primitives";
+import { cn, roleLabel } from "@/lib/utils";
+import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "./ui/overlays";
+import { StatusDot, Tooltip, type DotStatus } from "./ui/primitives";
 
-export function teamHealth(t: Team, ov: Overview): Health {
-  if (t.running) return ov.stop ? "stopped" : "working";
-  if (!t.last_run && !t.last_run_at) return "never";
-  return "idle";
+export function teamHealth(t: Team, ov: Overview): DotStatus {
+  return t.running && ov.stop ? "stopping" : t.health;
 }
 
-/** Active projects first, then most recently run; never-run projects go in their own group. */
+/** One line on what the project is doing, matching its health. */
+export function teamSummary(t: Team): { text: string; className: string } {
+  switch (t.health) {
+    case "running":
+      return {
+        text: t.now ? `${roleLabel(t.now.agent)} · working` : "Starting…",
+        className: "text-good-ink",
+      };
+    case "stale":
+      return { text: "An agent may be stuck", className: "text-ink" };
+    case "lost":
+      return { text: `Run lost · last activity ${relative(t.last_run_at)}`, className: "text-critical-ink" };
+    case "failed":
+      return { text: `Last run failed · ${relative(t.last_run_at)}`, className: "text-critical-ink" };
+    case "incomplete":
+      return { text: `Ran ${relative(t.last_run_at)} · unfinished work`, className: "text-ink-2" };
+    case "idle":
+      return { text: `Ran ${relative(t.last_run_at)}`, className: "text-muted" };
+    default:
+      return { text: "Not run yet", className: "text-muted" };
+  }
+}
+
+/** What needs attention first (lost, failed, stuck, running), then most recently run. */
 export function sortTeams(teams: Team[]) {
-  const ran = teams.filter((t) => t.last_run_at || t.last_run || t.running);
-  const never = teams.filter((t) => !ran.includes(t));
+  const ran = teams.filter((t) => t.health !== "never");
+  const never = teams.filter((t) => t.health === "never");
+  const urgency = (t: Team) => Math.min(HEALTH_ORDER.indexOf(t.health), 4);
   ran.sort(
     (a, b) =>
-      Number(b.running) - Number(a.running) ||
+      urgency(a) - urgency(b) ||
       new Date(b.last_run_at ?? 0).getTime() - new Date(a.last_run_at ?? 0).getTime(),
   );
   return { ran, never };
+}
+
+export function HealthDot({ t, ov, className }: { t: Team; ov: Overview; className?: string }) {
+  const h = HEALTH[t.health];
+  return (
+    <Tooltip
+      content={
+        <span>
+          <b className="font-semibold">{t.running && ov.stop ? "Stopping" : h.label}.</b> {h.hint}
+        </span>
+      }
+    >
+      <span className={cn("inline-flex", className)} aria-label={h.label}>
+        <StatusDot status={teamHealth(t, ov)} />
+      </span>
+    </Tooltip>
+  );
 }
 
 export function Logo({ className }: { className?: string }) {
@@ -57,16 +100,7 @@ function ProjectRow({
   active: boolean;
   onNavigate?: () => void;
 }) {
-  const health = teamHealth(t, ov);
-  const sub = t.running
-    ? t.now
-      ? `${t.now.agent} · working`
-      : "starting…"
-    : t.last_run_at
-      ? `Last run ${relative(t.last_run_at)}`
-      : t.last_run
-        ? `Last run ${t.last_run}`
-        : "Not run yet";
+  const sub = teamSummary(t);
   return (
     <a
       href={href({ view: "project", team: t.team, tab: "activity" })}
@@ -77,7 +111,7 @@ function ProjectRow({
         active ? "bg-surface shadow-card ring-line ring-1" : "hover:bg-surface-2/70",
       )}
     >
-      <StatusDot status={health} />
+      <HealthDot t={t} ov={ov} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className={cn("truncate text-[13px] font-medium", active ? "text-ink" : "text-ink/90")}>
@@ -85,7 +119,7 @@ function ProjectRow({
           </span>
           {!t.enabled && <span className="text-muted text-[10.5px]">off</span>}
         </div>
-        <div className={cn("truncate text-[11.5px]", t.running ? "text-good-ink" : "text-muted")}>{sub}</div>
+        <div className={cn("truncate text-[11.5px]", sub.className)}>{sub.text}</div>
       </div>
       <div className="text-muted flex items-center gap-1.5">
         {t.questions && (
@@ -111,15 +145,20 @@ export function Sidebar({
   route,
   theme,
   setTheme,
+  tz,
+  setTz,
   onNavigate,
 }: {
   ov: Overview | undefined;
   route: Route;
   theme: ThemePref;
   setTheme: (t: ThemePref) => void;
+  tz: TimePref;
+  setTz: (t: TimePref) => void;
   onNavigate?: () => void;
 }) {
   const [showNever, setShowNever] = useState(false);
+  const clocksDiffer = !!ov && ov.utc_offset_min !== browserOffsetMin();
   const { ran, never } = ov ? sortTeams(ov.teams) : { ran: [], never: [] };
   const current = route.view === "project" ? route.team : null;
   const ThemeIcon = theme === "dark" ? Moon : theme === "light" ? Sun : Monitor;
@@ -195,13 +234,28 @@ export function Sidebar({
         <Menu>
           <MenuTrigger asChild>
             <button
-              className="text-muted hover:bg-surface-2 hover:text-ink flex size-7 items-center justify-center rounded-md transition-colors"
-              aria-label="Theme"
+              className="text-muted hover:bg-surface-2 hover:text-ink relative flex size-7 items-center justify-center rounded-md transition-colors"
+              aria-label="Display settings"
             >
               <ThemeIcon className="size-4" />
+              {clocksDiffer && <span className="bg-warning absolute top-1 right-1 size-1.5 rounded-full" />}
             </button>
           </MenuTrigger>
           <MenuContent>
+            <MenuLabel>Times shown in</MenuLabel>
+            <MenuItem icon={<Clock3 />} checked={tz === "computer"} onSelect={() => setTz("computer")}>
+              This computer&apos;s clock{ov ? ` (${offsetLabel(ov.utc_offset_min)})` : ""}
+            </MenuItem>
+            <MenuItem icon={<Globe />} checked={tz === "browser"} onSelect={() => setTz("browser")}>
+              The browser&apos;s time zone ({offsetLabel(browserOffsetMin())})
+            </MenuItem>
+            {clocksDiffer && (
+              <p className="text-muted max-w-64 px-2 pt-1 pb-1.5 text-[11.5px] leading-snug">
+                These disagree: the browser&apos;s time-zone data may be out of date. The computer&apos;s
+                clock is what your taskbar shows.
+              </p>
+            )}
+            <MenuSeparator />
             <MenuLabel>Theme</MenuLabel>
             <MenuItem icon={<Monitor />} checked={theme === "system"} onSelect={() => setTheme("system")}>
               System
