@@ -1,138 +1,181 @@
+<div align="center">
+
 # Kestrel
 
-**See what your AI agents are doing, what they cost, and when they get stuck — live, on your own machine.**
+**Mission control for AI agents.**<br>
+See what every agent is doing, what it costs, and when it gets stuck. Live, local, any framework.
 
-> **Pre-release.** The name and the install story are still changing. Expect breaking changes
-> until v0.1.0.
+[![CI](https://github.com/abdellahBSK/kestrel/actions/workflows/ci.yml/badge.svg)](https://github.com/abdellahBSK/kestrel/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
+![Zero dependencies](https://img.shields.io/badge/runtime%20deps-0-brightgreen)
+![No telemetry](https://img.shields.io/badge/telemetry-none-brightgreen)
 
-Kestrel is a local dashboard for agent runs. Any agent, framework or orchestrator reports
-small JSON events (run started, agent spawned, tool call, tokens, heartbeat, finished, PR
-opened) and the dashboard shows every run live: which agents are working, waiting, idle or stuck,
-what each one did, what it cost in tokens, and which runs were lost or left work unfinished.
+[Quick start](#quick-start) · [Report your agents](#report-your-agents) · [Event format](docs/events.md) · [Architecture](docs/architecture.md) · [Roadmap](specs/001-kestrel-v0.1/tasks.md) · [Contributing](CONTRIBUTING.md)
 
-It also ships an optional **scheduled runner** for teams of [Claude Code](https://docs.claude.com/en/docs/claude-code)
-agents (a lead plus developer, tester, QA, security and optimizer subagents) that work on your
-repositories within a daily token budget, behind a guard that enforces branch, path and budget
-rules.
+<img src="docs/assets/overview-dark.png" alt="Kestrel overview: six projects with their health in the sidebar, token usage against the daily budget, and the week's schedule" width="900">
 
-- **Agent-agnostic.** A documented [event format](docs/events.md), a Python client, a CLI and
-  an HTTP endpoint. The Claude Code runner is just one adapter.
-- **Honest status.** It never trusts an agent's last word: runs need heartbeats, agents decay
-  from working to idle to stale, and runs that ended mid-task show which agent was cut off.
-- **Local and private.** Listens on 127.0.0.1, stores everything in one SQLite file, scrubs
-  secrets before storing them, makes no third-party requests and sends no telemetry.
+</div>
 
-## Try it in one minute
+---
 
-Requires Python 3.11+ and, to build the web app, Node 20+.
+Agents now work for minutes or hours on their own: coding agents that open pull requests overnight,
+research agents, a lead delegating to a team of specialists. While they run you are blind. Is it
+compiling or dead? What did it actually do? What did it cost? What is waiting for you?
+
+**Kestrel** is a small local dashboard that answers those questions for every agent on your
+machine, whatever it is built with. Agents report tiny JSON events; Kestrel shows every run live,
+the tree of agents inside it, a plain-language feed of their actions, tokens and cost, and the
+pull requests and questions waiting for you.
+
+## Why Kestrel
+
+- 🟢 **Status you can trust.** Kestrel never takes an agent's word that it's still working. Runs
+  need heartbeats; silent agents decay to *idle*, then *stale*; a run that dies mid-task shows as
+  **lost**, with the agents it **cut off**. No more green dots on dead processes.
+- 🔌 **Works with any agent.** A [documented event format](docs/events.md), a Python client, a CLI
+  and an HTTP endpoint. A first-party adapter for Claude Code; bring your own for anything else.
+- 🔒 **Local and private.** Binds to 127.0.0.1, one SQLite file, secrets scrubbed before storage,
+  a token on ingest, no telemetry, no third-party requests.
+- 📦 **Zero dependencies.** The Python package uses the standard library only. The dashboard ships
+  pre-built inside it.
+- 🧭 **Built for the morning after.** Which runs failed, which agent got stuck, which PRs need a
+  review, which questions your agents left you, all on one screen.
+
+<img src="docs/assets/project-dark.png" alt="A live run: status, tokens against the run's budget, agents, duration, and a feed of what each agent did in plain language" width="900">
+
+## Quick start
+
+Kestrel needs Python 3.11+. Until the first release is on PyPI, install it from source (Node 20+
+builds the dashboard once):
 
 ```bash
-git clone <this repo> && cd control-room
-python -m venv .venv
-.venv/bin/pip install -e ".[dev]"          # Windows: .venv\Scripts\pip install -e ".[dev]"
-cd frontend && npm ci && npm run build && cd ..
-.venv/bin/kestrel demo                  # opens http://127.0.0.1:7777
+git clone https://github.com/abdellahBSK/kestrel && cd kestrel
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e .
+(cd frontend && npm ci && npm run build)
+kestrel demo                                        # opens http://127.0.0.1:7777
 ```
 
-The demo runs six fictional projects through every state the dashboard knows (a live run, a
-stuck agent, a run that left work unfinished, a failed run, a lost run) in a throwaway folder
-that is deleted when you stop it.
+`kestrel demo` runs six fictional projects through every state Kestrel knows (a live run, a stuck
+agent, unfinished work, a failed run, a lost run) in a throwaway folder deleted when you stop it.
 
-## Report your own agents
-
-Start the dashboard, then send events from anywhere.
+Then point your own agents at it:
 
 ```bash
-kestrel watch                           # http://127.0.0.1:7777
+kestrel watch          # the dashboard for your real runs
 ```
 
-**From Python** (writes straight to the local store; no server needed):
+<details>
+<summary><b>Docker</b></summary>
+
+```bash
+docker compose up      # http://127.0.0.1:7777, data in the kestrel-data volume
+docker compose run --rm --service-ports kestrel demo --no-browser
+```
+
+The port is published on 127.0.0.1 only. Agents on the host report to it over HTTP.
+</details>
+
+## Report your agents
+
+**Python**: no server needed; events go straight into the local store.
 
 ```python
 from kestrel.client import Reporter
 
-with Reporter("my-project").run("Fix the login bug") as run:  # sends heartbeats while open
+with Reporter("my-project").run("Fix the login bug") as run:  # heartbeats while open
     lead = run.agent("lead", role="lead", model="claude-opus-5-5")
     dev = run.agent("dev-1", role="developer", parent="lead", description="Implement the fix")
     dev.action("Bash", detail="npm test", summary="Ran the tests", result="42 passed")
     dev.tokens(input=1200, output=300, model="claude-sonnet-5-5")
     dev.finish()
     lead.finish()
+# an exception inside the block marks the run failed, with the error
 ```
 
-**From any language**, with the CLI or over HTTP:
+**Any language**: the CLI, or one HTTP request per event.
 
 ```bash
 RUN=$(kestrel emit run.started --project my-project -d title="Fix the login bug")
 kestrel emit agent.action --project my-project --run $RUN --agent dev-1 -d tool=Bash -d detail="npm test"
 kestrel emit run.finished --project my-project --run $RUN
 
-curl -X POST http://127.0.0.1:7777/v1/events -H "Authorization: Bearer $(kestrel token)" \
-  -H "Content-Type: application/json" \
+curl -X POST http://127.0.0.1:7777/v1/events \
+  -H "Authorization: Bearer $(kestrel token)" -H "Content-Type: application/json" \
   -d '{"type":"agent.message","project":"my-project","run":"r1","agent":"lead","data":{"text":"hi"}}'
 ```
 
-[`docs/events.md`](docs/events.md) is the full format, how the dashboard interprets it, and how
-to write an adapter for your framework.
+The [event format](docs/events.md) is twelve event types, documented in one page, with a guide to
+writing an adapter for your framework.
 
-## Configuration
+## How it works
 
-Everything lives in a home folder: `$KESTREL_HOME`, or `~/.kestrel` by default. A config
-file is optional. To set budgets, a schedule, display names or runner teams, copy
-[`config.example.toml`](config.example.toml) to `<home>/config.toml`:
-
-```toml
-[budget]
-agents_daily = 800_000           # token budget lines on the dashboard (0 = none)
-
-[projects.my-project]
-title = "My project: what it is"
-key = "MYP"
+```mermaid
+flowchart LR
+    A["Your agents<br/>Python · CLI · HTTP · Claude Code"] -->|v1 events| K["Kestrel<br/>validate · scrub · store"]
+    K --> S[("SQLite")]
+    S -->|"fold events + heartbeats + now"| K
+    K -->|"runs, agents, health (UTC)"| D["Dashboard"]
 ```
+
+Agents report facts, never status. Kestrel decides what is live from the evidence and the clock,
+every time you look. Details in [the architecture](docs/architecture.md) and the
+[decision records](docs/adr).
 
 ## The Claude Code runner (optional)
 
-Teams declared under `[teams.<name>]` are run by `kestrel run`: one Claude Code session per
-team per day, a lead delegating to subagents, every task on its own branch and pull request.
-Requires the `claude` CLI and `gh`.
+Kestrel also ships a scheduled runner for teams of [Claude Code](https://docs.claude.com/en/docs/claude-code)
+agents: a lead delegating to developer, tester, QA, security and optimizer subagents, working on
+your repositories within a daily token budget, every task on its own branch and pull request.
 
 ```bash
-kestrel setup          # create the team workspaces
+kestrel setup          # create the team workspaces from [teams.*] in your config
 kestrel run --dry-run  # what today's scheduled run would do
 kestrel status         # tokens used today and this week, budget left
 ```
 
-On Windows, `src/kestrel/runner/install-schedule.ps1 -HomeDir <home> -Python <python.exe>`
-registers a daily task. Don't put the home folder inside a git repository: Claude Code would
-treat that repository as the agents' project, so the runner refuses to start.
+A guard hook blocks pushes to anything but task branches, writes outside the team folder, secret
+files and outbound HTTP; enforces the budget; makes QA wait for the tests; and stops a lead from
+ending a run while its agents still work. It is a strong guardrail, **not a sandbox**: review
+agent changes before merging, and use a container or VM for real isolation.
 
-**Safety.** The runner installs a guard hook that blocks pushes to anything but task branches,
-writes outside the team folder, secret files and outbound HTTP; enforces the token budget; makes
-QA wait for the tests; and stops a lead from ending a run while its agents still work. It is a
-strong guardrail, **not a sandbox**: review agent changes before you merge them, and run agents
-in a container or a VM for real isolation.
+## Configuration
 
-## How status works
+Everything lives in one home folder: `$KESTREL_HOME`, or `~/.kestrel`. A config file is optional;
+copy [`config.example.toml`](config.example.toml) to `<home>/config.toml` to set budgets, display
+names, liveness thresholds or runner teams.
 
-- **Runs** are live while events or heartbeats keep coming. A run that goes silent without
-  finishing is **lost**.
-- **Agents** are *working*, *waiting* on agents they started, *idle* after 2 minutes, *stale*
-  after 10 (maybe stuck), *finished*, *failed*, or **cut off** when the run ended first.
-- **Time.** The API speaks UTC only. The dashboard shows times on this computer's clock by
-  default (browsers' time-zone data can lag behind the OS), or in the browser's zone.
+```toml
+[budget]
+agents_daily = 800_000        # token budget line on the dashboard (0 = none)
 
-## Development
+[monitor]
+heartbeat_timeout = 45        # silent this long → the run is lost
+stale_after = 600             # an agent idle this long may be stuck
 
-```bash
-ruff check . && ruff format --check .   # Python lint and format
-pytest                                  # Python tests
-cd frontend
-npm run dev          # http://localhost:5173, proxies /api to `kestrel watch` on :7777
-npm run typecheck && npm run lint && npm run format:check && npm test
+[projects.my-project]
+title = "My project: what it is"
 ```
 
-The dashboard is React + TypeScript (Vite, Tailwind CSS, Radix UI, TanStack Query).
-`npm run build` writes it into `src/kestrel/static/`, which the Python server serves.
+## Roadmap
+
+Kestrel is pre-1.0 and moving fast. Next up ([full list](specs/001-kestrel-v0.1/tasks.md)):
+
+- [ ] Claude Code hooks adapter for any Claude Code session, and a Claude Agent SDK adapter
+- [ ] Alerts: stuck agent, failed run, budget threshold, PR waiting
+- [ ] Estimated cost in USD next to tokens
+- [ ] Stop buttons per agent and per project; budget caps that halt agents
+- [ ] `pipx install kestrel-agents`, Docker image on GHCR, v0.1.0
+
+Want an adapter for your framework? [Ask for it](../../issues/new?template=adapter_request.yml),
+or build it: it is usually one file.
+
+## Contributing
+
+Kestrel is built [spec-first](specs/README.md) against a short [constitution](specs/constitution.md).
+Bug fixes go straight to a PR; features start as an issue and a spec. See
+[CONTRIBUTING.md](CONTRIBUTING.md) to set up a dev environment in two minutes.
 
 ## License
 
