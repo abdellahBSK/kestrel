@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from controlroom import paths
-from controlroom.runner import orchestrator as orch
+from kestrel import paths
+from kestrel.runner import orchestrator as orch
 
 
 @pytest.fixture
@@ -52,7 +52,7 @@ def test_charter_points_at_packaged_tools(cfg):
     text = orch.charter("sandbox", cfg["teams"]["sandbox"], cfg)
     assert f"python {paths.RUNNER.as_posix()}/shoot.py" in text
     assert "hq/" not in text
-    assert "Laws of the Kingdom" in text  # the rules are embedded
+    assert "Rules" in text  # the rules are embedded
 
 
 def test_settings_hook_passes_the_home_folder():

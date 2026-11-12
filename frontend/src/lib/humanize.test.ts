@@ -13,7 +13,7 @@ const bash = (text: string): FeedEvent => ({
 describe("humanize", () => {
   it.each([
     ["npm test", "Ran the tests"],
-    ["cd /c/Users/me/cr/teams/tells/repo; npx expo export --platform web", "Ran a script"],
+    ["cd /c/Users/me/cr/teams/shop/repo; npx expo export --platform web", "Ran a script"],
     ["cd repo && pytest -q", "Ran the tests"],
     ["git -C repo switch -c feat/TEL-006-web-demo origin/main", "Created branch feat/TEL-006-web-demo"],
     ["git -C repo push -u origin feat/TEL-006-web-demo", "Pushed the branch"],
@@ -26,8 +26,8 @@ describe("humanize", () => {
   });
 
   it("keeps the raw command for the tooltip and shows a shortened one", () => {
-    const h = humanize(bash("cd /c/Users/me/cr/teams/tells/repo; cat src/app.ts"));
-    expect(h.raw).toBe("cd /c/Users/me/cr/teams/tells/repo; cat src/app.ts");
+    const h = humanize(bash("cd /c/Users/me/cr/teams/shop/repo; cat src/app.ts"));
+    expect(h.raw).toBe("cd /c/Users/me/cr/teams/shop/repo; cat src/app.ts");
     expect(h.detail).toBe("cat src/app.ts");
   });
 
@@ -46,7 +46,7 @@ describe("humanize", () => {
 
 describe("shortenPaths", () => {
   it("makes paths relative to the team folder and hides the run's temp folder", () => {
-    expect(shortenPaths("ls C:/Users/me/cr/teams/tells/repo/src")).toBe("ls repo/src");
+    expect(shortenPaths("ls C:/Users/me/cr/teams/shop/repo/src")).toBe("ls repo/src");
     expect(
       shortenPaths(
         "cat C:/Users/me/AppData/Local/Temp/claude/2b9a818d/4b68352a-d536-4cbd-abcf-0f578b5f979a/tasks/x.output",

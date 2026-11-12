@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────────
-#  Control Room config. Copy this file to <home>/config.toml and edit it.
-#  <home> is $CONTROLROOM_HOME, or ~/.controlroom when that is not set.
+#  Kestrel config. Copy this file to <home>/config.toml and edit it.
+#  <home> is $KESTREL_HOME, or ~/.kestrel when that is not set.
 #  Token unit = input + output + cache-write tokens ("fresh" tokens), weighted by model price.
 # ─────────────────────────────────────────────────────────────
 
@@ -50,6 +50,9 @@ stale_after = 600        # ...and after this long → "stale" (it may be stuck)
 # Refuse to start QA while a developer or tester is still running, and a tester while a
 # developer is: QA must judge a finished, tested change.
 enforce_order = true
+# Keep "Co-Authored-By: Claude", "Generated with Claude Code" and similar lines out of the agents'
+# commits, PRs and files. Off by default: agent work stays attributed unless you opt out.
+hide_ai_attribution = false
 
 [models]
 # The lead plans, delegates and reviews: give it the strongest model.

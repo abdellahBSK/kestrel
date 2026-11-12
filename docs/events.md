@@ -2,7 +2,7 @@
 
 Any agent, framework or orchestrator can report into the dashboard by sending small JSON
 events. This page is the whole contract. The reference implementation is
-[`src/controlroom/events.py`](../src/controlroom/events.py).
+[`src/kestrel/core/events.py`](../src/kestrel/core/events.py).
 
 ## The shape of an event
 
@@ -89,7 +89,7 @@ The thresholds live under `[monitor]` in `config.toml`.
 **Python** (no server needed; writes to this computer's store):
 
 ```python
-from controlroom.client import Reporter
+from kestrel.client import Reporter
 
 with Reporter("storefront").run("Apple Pay in checkout") as run:  # heartbeats while open
     lead = run.agent("lead", role="lead", model="claude-opus-5-5")
@@ -103,18 +103,18 @@ with Reporter("storefront").run("Apple Pay in checkout") as run:  # heartbeats w
 **Command line** (any language, no server needed):
 
 ```bash
-RUN=$(controlroom emit run.started --project storefront -d title="Apple Pay in checkout")
-controlroom emit agent.started --project storefront --run $RUN --agent dev-1 -d role=developer
-controlroom emit agent.action  --project storefront --run $RUN --agent dev-1 -d tool=Bash -d detail="npm test"
-controlroom emit run.finished  --project storefront --run $RUN
-controlroom ingest events.jsonl            # a file of events, one JSON object per line
+RUN=$(kestrel emit run.started --project storefront -d title="Apple Pay in checkout")
+kestrel emit agent.started --project storefront --run $RUN --agent dev-1 -d role=developer
+kestrel emit agent.action  --project storefront --run $RUN --agent dev-1 -d tool=Bash -d detail="npm test"
+kestrel emit run.finished  --project storefront --run $RUN
+kestrel ingest events.jsonl            # a file of events, one JSON object per line
 ```
 
-**HTTP**, to a running dashboard (`controlroom watch`):
+**HTTP**, to a running dashboard (`kestrel watch`):
 
 ```bash
 curl -X POST http://127.0.0.1:7777/v1/events \
-  -H "Authorization: Bearer $(controlroom token)" \
+  -H "Authorization: Bearer $(kestrel token)" \
   -H "Content-Type: application/json" \
   -d '{"type":"run.started","project":"storefront","run":"r1","data":{"title":"Apple Pay"}}'
 ```
@@ -139,11 +139,11 @@ in a batch are kept even if others are not. `GET /v1/health` needs no token.
 
 An adapter turns one agent setup into these events. Two good patterns:
 
-1. **Hooks** (preferred): call the `Reporter` or `controlroom emit` from your framework's
+1. **Hooks** (preferred): call the `Reporter` or `kestrel emit` from your framework's
    callbacks: run start and end, each tool call and its result, each model response's usage.
 2. **Log tailing**: read the framework's own logs or transcripts and convert them, giving every
    event a deterministic `id` (derived from the file and line) so re-reading is harmless.
-   [`adapters/claude_code.py`](../src/controlroom/adapters/claude_code.py) works this way.
+   [`adapters/claude_code.py`](../src/kestrel/adapters/claude_code.py) works this way.
 
 Either way: send `agent.started` with a `parent` so the dashboard can draw the tree, send
 heartbeats while a run is alive, and always end with `run.finished`, including on errors.

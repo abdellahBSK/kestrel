@@ -1,6 +1,6 @@
 // Formatting helpers. Every timestamp from the server is UTC; it is shown either in the browser's
 // timezone or at a fixed UTC offset (this computer's clock), as the viewer chooses. The two can
-// disagree when the browser's timezone data is out of date for a zone (it happened for Morocco).
+// disagree when the browser's timezone data is out of date for a zone (it happens after zone rule changes).
 
 let displayOffsetMin: number | null = null;
 

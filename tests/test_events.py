@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from controlroom.events import EventError, normalize, scrub
+from kestrel.core.events import EventError, normalize, scrub
 
 NOW = 1_794_473_380.0  # 2026-11-12T08:49:40Z
 

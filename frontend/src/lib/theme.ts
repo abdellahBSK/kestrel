@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
 export type ThemePref = "system" | "light" | "dark";
-const KEY = "cr.theme";
+const KEY = "kestrel.theme";
 
 /** Which clock times are shown in: this computer's (the server's UTC offset) or the browser's zone. */
 export type TimePref = "computer" | "browser";
-const TZ_KEY = "cr.tz";
+const TZ_KEY = "kestrel.tz";
 
 export function useTimePref() {
   const [pref, setPref] = useState<TimePref>(() => {

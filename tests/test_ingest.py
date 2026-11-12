@@ -9,14 +9,14 @@ import urllib.request
 
 import pytest
 
-from controlroom import ingest, server
-from controlroom.client import Reporter
-from controlroom.events import EventError
+from kestrel.api import ingest, server
+from kestrel.client import Reporter
+from kestrel.core.events import EventError
 
 
 @pytest.fixture
 def base_url(monkeypatch):
-    monkeypatch.setattr(server.kingdom, "open_prs", lambda t: [])
+    monkeypatch.setattr(server.orchestrator, "open_prs", lambda t: [])
     server.CACHE.data.clear()
     srv = server.Server(("127.0.0.1", 0), server.Handler)
     port = srv.server_address[1]

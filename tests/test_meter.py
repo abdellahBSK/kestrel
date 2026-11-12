@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 
 from conftest import team_project_dir, usage_record, write_transcript
-from controlroom import meter
+from kestrel import meter
 
 
 def now_iso(delta_minutes: int = 0) -> str:

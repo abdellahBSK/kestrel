@@ -8,13 +8,15 @@ import urllib.request
 import pytest
 
 from conftest import usage_record, write_transcript
-from controlroom import NAME, runs, server
-from controlroom.events import normalize
+from kestrel import NAME
+from kestrel.api import server
+from kestrel.core import runs
+from kestrel.core.events import normalize
 
 
 @pytest.fixture
 def base_url(monkeypatch):
-    monkeypatch.setattr(server.kingdom, "open_prs", lambda t: [])  # never call `gh` in tests
+    monkeypatch.setattr(server.orchestrator, "open_prs", lambda t: [])  # never call `gh` in tests
     server.CACHE.data.clear()
     srv = server.ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
     port = srv.server_address[1]
@@ -60,10 +62,10 @@ def test_foreign_host_header_is_rejected(base_url):
 
 def test_buttons_need_the_custom_header_and_same_origin(base_url, home):
     assert post(base_url + "/api/stop")[0] == 403
-    assert post(base_url + "/api/stop", {"X-Kingdom": "1", "Origin": "https://evil.example"})[0] == 403
-    status, res = post(base_url + "/api/stop", {"X-Kingdom": "1"})
+    assert post(base_url + "/api/stop", {"X-Kestrel": "1", "Origin": "https://evil.example"})[0] == 403
+    status, res = post(base_url + "/api/stop", {"X-Kestrel": "1"})
     assert status == 200 and res["ok"] and (home / "STOP").exists()
-    status, res = post(base_url + "/api/resume", {"X-Kingdom": "1"})
+    status, res = post(base_url + "/api/resume", {"X-Kestrel": "1"})
     assert status == 200 and not (home / "STOP").exists()
 
 
@@ -107,7 +109,7 @@ def test_claude_code_transcripts_become_the_feed(tmp_path):
                         {
                             "type": "tool_result",
                             "tool_use_id": "t2",
-                            "content": "[Kingdom guard] Law 2: no",
+                            "content": "[Kestrel guard] Rule 2: no",
                             "is_error": True,
                         },
                     ]

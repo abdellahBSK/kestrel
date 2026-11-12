@@ -83,7 +83,7 @@ export function App() {
           <div className="border-critical/30 bg-critical/[0.07] text-ink flex items-center gap-2 border-b px-4 py-2 text-[13px] lg:px-8">
             <WifiOff className="text-critical-ink size-4" />
             Can&apos;t reach the {appName} server. Is{" "}
-            <code className="font-mono text-[12px]">controlroom watch</code> still running? Retrying…
+            <code className="font-mono text-[12px]">kestrel watch</code> still running? Retrying…
           </div>
         )}
         <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto">

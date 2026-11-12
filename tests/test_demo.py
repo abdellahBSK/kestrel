@@ -5,7 +5,8 @@ from __future__ import annotations
 import random
 import time
 
-from controlroom import demo, runs
+from kestrel import demo
+from kestrel.core import runs
 
 TH = {"heartbeat_timeout": 45, "idle_after": 120, "stale_after": 600}
 

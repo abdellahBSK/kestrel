@@ -1,11 +1,11 @@
-# Control Room
+# Kestrel
 
 **See what your AI agents are doing, what they cost, and when they get stuck — live, on your own machine.**
 
 > **Pre-release.** The name and the install story are still changing. Expect breaking changes
 > until v0.1.0.
 
-Control Room is a local dashboard for agent runs. Any agent, framework or orchestrator reports
+Kestrel is a local dashboard for agent runs. Any agent, framework or orchestrator reports
 small JSON events (run started, agent spawned, tool call, tokens, heartbeat, finished, PR
 opened) and the dashboard shows every run live: which agents are working, waiting, idle or stuck,
 what each one did, what it cost in tokens, and which runs were lost or left work unfinished.
@@ -31,7 +31,7 @@ git clone <this repo> && cd control-room
 python -m venv .venv
 .venv/bin/pip install -e ".[dev]"          # Windows: .venv\Scripts\pip install -e ".[dev]"
 cd frontend && npm ci && npm run build && cd ..
-.venv/bin/controlroom demo                  # opens http://127.0.0.1:7777
+.venv/bin/kestrel demo                  # opens http://127.0.0.1:7777
 ```
 
 The demo runs six fictional projects through every state the dashboard knows (a live run, a
@@ -43,13 +43,13 @@ that is deleted when you stop it.
 Start the dashboard, then send events from anywhere.
 
 ```bash
-controlroom watch                           # http://127.0.0.1:7777
+kestrel watch                           # http://127.0.0.1:7777
 ```
 
 **From Python** (writes straight to the local store; no server needed):
 
 ```python
-from controlroom.client import Reporter
+from kestrel.client import Reporter
 
 with Reporter("my-project").run("Fix the login bug") as run:  # sends heartbeats while open
     lead = run.agent("lead", role="lead", model="claude-opus-5-5")
@@ -63,11 +63,11 @@ with Reporter("my-project").run("Fix the login bug") as run:  # sends heartbeats
 **From any language**, with the CLI or over HTTP:
 
 ```bash
-RUN=$(controlroom emit run.started --project my-project -d title="Fix the login bug")
-controlroom emit agent.action --project my-project --run $RUN --agent dev-1 -d tool=Bash -d detail="npm test"
-controlroom emit run.finished --project my-project --run $RUN
+RUN=$(kestrel emit run.started --project my-project -d title="Fix the login bug")
+kestrel emit agent.action --project my-project --run $RUN --agent dev-1 -d tool=Bash -d detail="npm test"
+kestrel emit run.finished --project my-project --run $RUN
 
-curl -X POST http://127.0.0.1:7777/v1/events -H "Authorization: Bearer $(controlroom token)" \
+curl -X POST http://127.0.0.1:7777/v1/events -H "Authorization: Bearer $(kestrel token)" \
   -H "Content-Type: application/json" \
   -d '{"type":"agent.message","project":"my-project","run":"r1","agent":"lead","data":{"text":"hi"}}'
 ```
@@ -77,7 +77,7 @@ to write an adapter for your framework.
 
 ## Configuration
 
-Everything lives in a home folder: `$CONTROLROOM_HOME`, or `~/.controlroom` by default. A config
+Everything lives in a home folder: `$KESTREL_HOME`, or `~/.kestrel` by default. A config
 file is optional. To set budgets, a schedule, display names or runner teams, copy
 [`config.example.toml`](config.example.toml) to `<home>/config.toml`:
 
@@ -92,17 +92,17 @@ key = "MYP"
 
 ## The Claude Code runner (optional)
 
-Teams declared under `[teams.<name>]` are run by `controlroom run`: one Claude Code session per
+Teams declared under `[teams.<name>]` are run by `kestrel run`: one Claude Code session per
 team per day, a lead delegating to subagents, every task on its own branch and pull request.
 Requires the `claude` CLI and `gh`.
 
 ```bash
-controlroom setup          # create the team workspaces
-controlroom run --dry-run  # what today's scheduled run would do
-controlroom status         # tokens used today and this week, budget left
+kestrel setup          # create the team workspaces
+kestrel run --dry-run  # what today's scheduled run would do
+kestrel status         # tokens used today and this week, budget left
 ```
 
-On Windows, `src/controlroom/runner/install-schedule.ps1 -HomeDir <home> -Python <python.exe>`
+On Windows, `src/kestrel/runner/install-schedule.ps1 -HomeDir <home> -Python <python.exe>`
 registers a daily task. Don't put the home folder inside a git repository: Claude Code would
 treat that repository as the agents' project, so the runner refuses to start.
 
@@ -127,12 +127,12 @@ in a container or a VM for real isolation.
 ruff check . && ruff format --check .   # Python lint and format
 pytest                                  # Python tests
 cd frontend
-npm run dev          # http://localhost:5173, proxies /api to `controlroom watch` on :7777
+npm run dev          # http://localhost:5173, proxies /api to `kestrel watch` on :7777
 npm run typecheck && npm run lint && npm run format:check && npm test
 ```
 
 The dashboard is React + TypeScript (Vite, Tailwind CSS, Radix UI, TanStack Query).
-`npm run build` writes it into `src/controlroom/static/`, which the Python server serves.
+`npm run build` writes it into `src/kestrel/static/`, which the Python server serves.
 
 ## License
 

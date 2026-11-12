@@ -1,4 +1,4 @@
-"""`controlroom emit`, `ingest` and `token`, run as a user would."""
+"""`kestrel emit`, `ingest` and `token`, run as a user would."""
 
 from __future__ import annotations
 
@@ -9,13 +9,13 @@ import sys
 
 import pytest
 
-from controlroom.store import Store
+from kestrel.storage.store import Store
 
 
 def cli(home, *args, stdin=None, store_path=None):
-    env = {**os.environ, "CONTROLROOM_HOME": str(home)}
+    env = {**os.environ, "KESTREL_HOME": str(home)}
     r = subprocess.run(
-        [sys.executable, "-m", "controlroom", *args],
+        [sys.executable, "-m", "kestrel", *args],
         input=stdin,
         capture_output=True,
         text=True,

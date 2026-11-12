@@ -3,33 +3,55 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "controlroom"
+name = "kestrel-agents"
 dynamic = ["version"]
-description = "A live dashboard, budget guard and runner for teams of AI coding agents."
+description = "Mission control for AI agents: a local, live dashboard that shows what every agent is doing, what it costs and when it gets stuck."
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "abdellahBSK" }]
 requires-python = ">=3.11"
 dependencies = []
+keywords = [
+    "ai-agents", "agents", "observability", "monitoring", "dashboard", "llm", "claude",
+    "claude-code", "multi-agent", "agentic-ai", "telemetry", "devtools",
+]
 classifiers = [
-    "Programming Language :: Python :: 3",
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
     "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development",
+    "Topic :: System :: Monitoring",
+    "Typing :: Typed",
 ]
 
+[project.urls]
+Homepage = "https://github.com/abdellahBSK/kestrel"
+Documentation = "https://github.com/abdellahBSK/kestrel/tree/main/docs"
+Issues = "https://github.com/abdellahBSK/kestrel/issues"
+Changelog = "https://github.com/abdellahBSK/kestrel/blob/main/CHANGELOG.md"
+
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "pre-commit>=3.7"]
 
 [project.scripts]
-controlroom = "controlroom.runner.orchestrator:main"
+kestrel = "kestrel.cli:main"
 
 [tool.setuptools.dynamic]
-version = { attr = "controlroom.__version__" }
+version = { attr = "kestrel.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-controlroom = ["static/*", "static/assets/*", "runner/*.ps1", "runner/git-hooks/*", "runner/roles/*.md", "runner/rules/*.md"]
+kestrel = ["py.typed", "static/*", "static/assets/*", "runner/*.ps1", "runner/git-hooks/*", "runner/roles/*.md", "runner/rules/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -48,4 +70,4 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"src/controlroom/runner/guard.py" = ["E402"]  # the hook bootstraps sys.path before importing the package
+"src/kestrel/runner/guard.py" = ["E402"]  # the hook bootstraps sys.path before importing the package

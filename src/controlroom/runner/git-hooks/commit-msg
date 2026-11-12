@@ -1,9 +1,0 @@
-#!/bin/sh
-# Kingdom Law 1: strip any Claude / AI attribution from commit messages.
-msg="$1"
-tmp="$msg.kingdom"
-grep -v -i -E 'co-authored-by:.*(claude|anthropic)|generated with \[?claude|noreply@anthropic|🤖' "$msg" > "$tmp"
-# drop trailing blank lines left behind
-sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$tmp" > "$msg"
-rm -f "$tmp"
-exit 0

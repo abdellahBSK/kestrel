@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from controlroom import status
+from kestrel.core import status
 
 TH = {"heartbeat_timeout": 45, "idle_after": 120, "stale_after": 600}
 

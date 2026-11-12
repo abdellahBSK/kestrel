@@ -1,4 +1,4 @@
-// Types and calls for the local server's JSON API (src/controlroom/server.py).
+// Types and calls for the local server's JSON API (src/kestrel/api/server.py).
 
 export type BacklogCounts = { todo: number; doing: number; review: number; done: number; blocked: number };
 
@@ -12,7 +12,7 @@ export type PullRequest = {
   reviewDecision: string;
 };
 
-/** Project health, decided by the server (src/controlroom/status.py). */
+/** Project health, decided by the server (src/kestrel/core/status.py). */
 export type Health = "running" | "stale" | "lost" | "failed" | "incomplete" | "idle" | "never";
 export type AgentState = "working" | "waiting" | "idle" | "stale" | "finished" | "lost" | "failed";
 
@@ -148,11 +148,11 @@ export const api = {
 
 /** Actions need a same-origin request with a custom header (the server rejects anything else). */
 export async function action(path: string): Promise<{ ok: boolean; msg: string }> {
-  const r = await fetch(path, { method: "POST", headers: { "X-Kingdom": "1" } });
+  const r = await fetch(path, { method: "POST", headers: { "X-Kestrel": "1" } });
   const body = await r.json().catch(() => ({ ok: false, msg: `Request failed (${r.status})` }));
   return body as { ok: boolean; msg: string };
 }
 
 export const appName =
   document.querySelector('meta[name="app-name"]')?.getAttribute("content")?.replace("__APP_NAME__", "") ||
-  "Control Room";
+  "Kestrel";

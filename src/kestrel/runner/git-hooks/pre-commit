@@ -1,0 +1,10 @@
+#!/bin/sh
+# Kestrel rule 4: agents commit only on task branches (<type>/<KEY>-<NNN>-<desc>) or agents/*.
+# The owner can bypass with KESTREL_OWNER=1.
+[ "$KESTREL_OWNER" = "1" ] && exit 0
+branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+if echo "$branch" | grep -qE '^(feat|fix|refactor|perf|test|docs|chore|security)/[A-Z]{3}-[0-9]{3}-[a-z0-9][a-z0-9-]*$|^agents/'; then
+  exit 0
+fi
+echo "Kestrel: commit on a task branch like feat/TEL-014-lock-screen-ui (current: $branch)." >&2
+exit 1

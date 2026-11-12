@@ -13,8 +13,8 @@ import time
 import pytest
 
 from conftest import team_project_dir, usage_record, write_transcript
-from controlroom import server
-from controlroom.runner import orchestrator as orch
+from kestrel.api import server
+from kestrel.runner import orchestrator as orch
 
 
 def at(seconds_ago: float) -> str:
@@ -46,7 +46,7 @@ def make_session(projects, sid, lead, subs=()):
 
 @pytest.fixture(autouse=True)
 def clean_state(home, monkeypatch):
-    monkeypatch.setattr(server.kingdom, "open_prs", lambda t: [])
+    monkeypatch.setattr(server.orchestrator, "open_prs", lambda t: [])
     server.CACHE.data.clear()
     state = home / "state"
     state.mkdir(exist_ok=True)
@@ -94,7 +94,7 @@ def test_finished_run_with_a_cut_off_agent(fake_claude_projects):
 
 
 def test_run_whose_runner_died_is_lost_not_working(fake_claude_projects, clean_state, dead_pid):
-    """The player-expert-system case: the runner process died and left its marker behind."""
+    """the runner process died and left its marker behind."""
     make_session(fake_claude_projects, "s1", [tool_use(at(3600), "m1", "t1")], [("a1", "developer", False, 3500)])
     current(clean_state, since=time.time() - 3600, heartbeat=time.time() - 3500, pid=dead_pid)
     ov = server.overview()

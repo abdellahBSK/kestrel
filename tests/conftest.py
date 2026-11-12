@@ -1,6 +1,6 @@
 """Test setup: every test runs against a throwaway home folder, never your real one.
 
-The home folder must be chosen before any `controlroom` module is imported (paths are resolved
+The home folder must be chosen before any `kestrel` module is imported (paths are resolved
 at import time), so it is set here at conftest import.
 """
 
@@ -15,13 +15,13 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-_HOME = Path(tempfile.mkdtemp(prefix="controlroom-test-home-"))
+_HOME = Path(tempfile.mkdtemp(prefix="kestrel-test-home-"))
 shutil.copyfile(ROOT / "config.example.toml", _HOME / "config.toml")
-os.environ["CONTROLROOM_HOME"] = str(_HOME)
+os.environ["KESTREL_HOME"] = str(_HOME)
 
-from controlroom import meter  # noqa: E402
-from controlroom import store as store_module  # noqa: E402
-from controlroom.adapters import claude_code  # noqa: E402
+from kestrel import meter  # noqa: E402
+from kestrel.adapters import claude_code  # noqa: E402
+from kestrel.storage import store as store_module  # noqa: E402
 
 
 @pytest.fixture

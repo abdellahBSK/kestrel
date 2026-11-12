@@ -79,7 +79,7 @@ def test_stop_is_allowed_on_the_retry_and_when_nothing_runs(home, transcript):
 
 def test_stop_flag_and_non_team_sessions_are_never_held(home, transcript):
     subagent(transcript, "a1", "developer")
-    assert run_guard(home, stop_event(transcript), AGENTHQ_TEAM="") is None
+    assert run_guard(home, stop_event(transcript), KESTREL_TEAM="") is None
     (home / "STOP").write_text("x")
     try:
         assert run_guard(home, stop_event(transcript)) is None

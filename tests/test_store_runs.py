@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from controlroom import runs
-from controlroom.events import normalize
-from controlroom.store import Store
+from kestrel.core import runs
+from kestrel.core.events import normalize
+from kestrel.storage.store import Store
 
 TH = {"heartbeat_timeout": 45, "idle_after": 120, "stale_after": 600}
 T = 1_794_473_380.0

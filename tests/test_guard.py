@@ -11,13 +11,13 @@ import sys
 import pytest
 
 from conftest import ROOT, team_project_dir, usage_record, write_transcript
-from controlroom import meter
+from kestrel import meter
 
-GUARD = ROOT / "src" / "controlroom" / "runner" / "guard.py"
+GUARD = ROOT / "src" / "kestrel" / "runner" / "guard.py"
 
 
 def run_guard(home, event: dict, user_home=None, **env) -> dict | None:
-    e = {**os.environ, "AGENTHQ_TEAM": "sandbox", "AGENTHQ_MODE": "build", "AGENTHQ_PR_MODE": "ready", **env}
+    e = {**os.environ, "KESTREL_TEAM": "sandbox", "KESTREL_MODE": "build", "KESTREL_PR_MODE": "ready", **env}
     if user_home is not None:  # where the guard looks for ~/.claude/projects
         e["HOME"] = e["USERPROFILE"] = str(user_home)
     r = subprocess.run(
@@ -50,17 +50,18 @@ def decision(out: dict | None) -> str:
         ("git -C repo push -u origin feat/SBX-001-add-cli", {}, "allow"),
         ("git push origin main", {}, "deny"),
         ("git push --force -u origin feat/SBX-001-add-cli", {}, "deny"),
-        ("git -C repo push -u origin feat/SBX-001-add-cli", {"AGENTHQ_PR_MODE": "none"}, "deny"),
+        ("git -C repo push -u origin feat/SBX-001-add-cli", {"KESTREL_PR_MODE": "none"}, "deny"),
         ("gh pr create --repo a/b --title x --body-file r.md", {}, "allow"),
-        ("gh pr create --repo a/b --title x --body-file r.md", {"AGENTHQ_PR_MODE": "draft"}, "deny"),
-        ("gh pr create --draft --repo a/b --title x --body-file r.md", {"AGENTHQ_PR_MODE": "draft"}, "allow"),
+        ("gh pr create --repo a/b --title x --body-file r.md", {"KESTREL_PR_MODE": "draft"}, "deny"),
+        ("gh pr create --draft --repo a/b --title x --body-file r.md", {"KESTREL_PR_MODE": "draft"}, "allow"),
         ("gh pr merge 3 --repo a/b", {}, "deny"),
         ("gh api repos/a/b", {}, "deny"),
         ("cat .env", {}, "deny"),
         ("curl https://example.com", {}, "deny"),
         ("curl http://localhost:8080/health", {}, "allow"),
         ("ssh host", {}, "deny"),
-        ('git commit -m "x" -m "Co-Authored-By: Claude"', {}, "deny"),
+        ('git commit -m "x" -m "Co-Authored-By: Claude"', {}, "allow"),  # attribution is kept by default
+        ('git commit -m "x" -m "Co-Authored-By: Claude"', {"KESTREL_HIDE_ATTRIBUTION": "1"}, "deny"),
         ("npm test", {}, "allow"),
     ],
 )
@@ -78,8 +79,8 @@ def test_paths_must_stay_in_the_team_folder(home):
 
 def test_advisory_teams_cannot_write_to_the_repo(home):
     target = str(home / "teams" / "sandbox" / "repo" / "a.py")
-    assert decision(run_guard(home, pre("Write", file_path=target), AGENTHQ_MODE="advisory")) == "deny"
-    assert decision(run_guard(home, pre("Bash", command="git -C repo commit -m x"), AGENTHQ_MODE="advisory")) == "deny"
+    assert decision(run_guard(home, pre("Write", file_path=target), KESTREL_MODE="advisory")) == "deny"
+    assert decision(run_guard(home, pre("Bash", command="git -C repo commit -m x"), KESTREL_MODE="advisory")) == "deny"
 
 
 def test_stop_flag_halts_every_agent(home):
@@ -91,7 +92,7 @@ def test_stop_flag_halts_every_agent(home):
 
 
 def test_no_team_means_no_workspace_rules(home):
-    out = run_guard(home, pre("Write", file_path=str(home / "config.toml")), AGENTHQ_TEAM="")
+    out = run_guard(home, pre("Write", file_path=str(home / "config.toml")), KESTREL_TEAM="")
     assert decision(out) == "allow"
 
 
@@ -100,17 +101,17 @@ def test_budget_warning_then_hard_stop(home, tmp_path):
     ts = dt.datetime.now(dt.UTC).isoformat().replace("+00:00", "Z")
     write_transcript(team_project_dir(projects, "sandbox") / "s.jsonl", [usage_record(ts, "m1", inp=900)])
     since = str(dt.datetime.now().timestamp() - 3600)
-    env = {"AGENTHQ_SINCE": since}
+    env = {"KESTREL_SINCE": since}
 
     post = {"hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_input": {"command": "ls"}}
-    warned = run_guard(home, post, user_home=tmp_path, AGENTHQ_ALLOWANCE="1000", **env)  # 90% used
+    warned = run_guard(home, post, user_home=tmp_path, KESTREL_ALLOWANCE="1000", **env)  # 90% used
     assert "BUDGET WARNING" in warned["hookSpecificOutput"]["additionalContext"]
     assert (
-        decision(run_guard(home, pre("Bash", command="ls"), user_home=tmp_path, AGENTHQ_ALLOWANCE="1000", **env))
+        decision(run_guard(home, pre("Bash", command="ls"), user_home=tmp_path, KESTREL_ALLOWANCE="1000", **env))
         == "allow"
     )
     assert (
-        decision(run_guard(home, pre("Bash", command="ls"), user_home=tmp_path, AGENTHQ_ALLOWANCE="900", **env))
+        decision(run_guard(home, pre("Bash", command="ls"), user_home=tmp_path, KESTREL_ALLOWANCE="900", **env))
         == "halt"
     )
 
