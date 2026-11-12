@@ -63,10 +63,7 @@ jobs:
           name: dist
           path: dist
       - name: Release notes from CHANGELOG.md
-        run: |
-          v="${GITHUB_REF_NAME#v}"
-          awk -v v="$v" '$0 ~ "^## \\[" v "\\]" {on=1; next} on && /^## \[/ {exit} on' CHANGELOG.md > notes.md
-          test -s notes.md || echo "See CHANGELOG.md" > notes.md
+        run: python3 scripts/release_notes.py "${GITHUB_REF_NAME#v}" > notes.md
       - env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file notes.md
