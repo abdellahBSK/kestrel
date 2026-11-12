@@ -36,7 +36,7 @@ Spec: [spec.md](spec.md) · Plan: [plan.md](plan.md)
 - [x] T031 Specs, constitution, ADRs, architecture doc
 - [x] T032 CONTRIBUTING, Code of Conduct, security policy, issue and PR templates, CHANGELOG
 - [x] T033 Dependabot, CodeQL, release workflow, pre-commit, editorconfig, Dockerfile
-- [ ] T034 README screenshots and a short GIF of the demo
+- [x] T034 README screenshots and a short GIF of the demo
 
 ## Phase 3: adapters
 
@@ -62,7 +62,12 @@ Spec: [spec.md](spec.md) · Plan: [plan.md](plan.md)
 
 ## Phase 6: release
 
-- [ ] T070 Wheel includes the built web app; `pipx install kestrel-agents` and `uvx kestrel-agents demo` work
+- [x] T070 Wheel includes the built web app; `pipx install kestrel-agents` and `uvx kestrel-agents demo` work
 - [ ] T071 Publish to PyPI with trusted publishing on tag
 - [ ] T072 Docker image on GHCR
 - [ ] T073 v0.1.0
+
+## Later
+
+- [ ] T080 OpenTelemetry bridge: accept OTLP traces from instrumented agents as events
+- [ ] T081 Team mode: one dashboard for several machines, with authentication

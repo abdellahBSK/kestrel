@@ -180,7 +180,7 @@ export function AgentsTable({ session }: { session: Session | undefined }) {
                       </Tooltip>
                     ) : (
                       session?.live &&
-                      ongoing && (
+                      (ongoing || a.state === "stale") && (
                         <Tooltip content={a.parent ? "Stop this agent" : "Stop this agent and its run"}>
                           <Button
                             variant="ghost"

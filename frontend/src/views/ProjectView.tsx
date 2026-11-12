@@ -361,7 +361,7 @@ function HealthCallout({ t }: { t: Overview["teams"][number] }) {
     stale: {
       tone: "warning",
       title: "An agent may be stuck",
-      body: "The run is alive, but at least one agent has shown no activity for a long time. Check the Agents tab; Stop all halts it at its next action.",
+      body: "The run is alive, but at least one agent has shown no activity for a long time. Check the Agents tab: its stop button, or Stop run, halts it at its next action.",
     },
     failed: {
       tone: "critical",

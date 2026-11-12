@@ -7,13 +7,14 @@ See what every agent is doing, what it costs, and when it gets stuck. Live, loca
 
 [![CI](https://github.com/abdellahBSK/kestrel/actions/workflows/ci.yml/badge.svg)](https://github.com/abdellahBSK/kestrel/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/kestrel-agents)](https://pypi.org/project/kestrel-agents/)
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
 ![Zero dependencies](https://img.shields.io/badge/runtime%20deps-0-brightgreen)
 ![No telemetry](https://img.shields.io/badge/telemetry-none-brightgreen)
 
 [Quick start](#quick-start) · [Report your agents](#report-your-agents) · [Docs](docs/README.md) · [Event format](docs/events.md) · [Roadmap](specs/001-kestrel-v0.1/tasks.md) · [Contributing](CONTRIBUTING.md)
 
-<img src="docs/assets/overview-dark.png" alt="Kestrel overview: six projects with their health in the sidebar, token usage against the daily budget, and the week's schedule" width="900">
+<img src="docs/assets/demo.gif" alt="Kestrel's demo: the overview of six projects, a live run filling its activity feed, an agent that may be stuck with its stop buttons, and a failed run" width="900">
 
 </div>
 
@@ -51,15 +52,17 @@ pull requests and questions waiting for you.
 
 ## Quick start
 
-Kestrel needs Python 3.11+. Until the first release is on PyPI, install it from source (Node 20+
-builds the dashboard once):
+Try it without installing anything but [uv](https://docs.astral.sh/uv/):
 
 ```bash
-git clone https://github.com/abdellahBSK/kestrel && cd kestrel
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e .
-(cd frontend && npm ci && npm run build)
-kestrel demo                                        # opens http://127.0.0.1:7777
+uvx kestrel-agents demo        # opens http://127.0.0.1:7777
+```
+
+Or install it (Python 3.11+, no other dependencies):
+
+```bash
+pipx install kestrel-agents    # or: pip install kestrel-agents
+kestrel demo
 ```
 
 `kestrel demo` runs six fictional projects through every state Kestrel knows (a live run, a stuck
@@ -76,11 +79,25 @@ kestrel watch          # the dashboard for your real runs
 <summary><b>Docker</b></summary>
 
 ```bash
-docker compose up      # http://127.0.0.1:7777, data in the kestrel-data volume
-docker compose run --rm --service-ports kestrel demo --no-browser
+docker run --rm -p 127.0.0.1:7777:7777 ghcr.io/abdellahbsk/kestrel demo --no-browser
+docker compose up      # the dashboard, with its data in the kestrel-data volume
 ```
 
 The port is published on 127.0.0.1 only. Agents on the host report to it over HTTP.
+</details>
+
+<details>
+<summary><b>From source</b></summary>
+
+Node 20+ builds the dashboard once:
+
+```bash
+git clone https://github.com/abdellahBSK/kestrel && cd kestrel
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e .
+(cd frontend && npm ci && npm run build)
+kestrel demo
+```
 </details>
 
 ## Report your agents
@@ -185,7 +202,9 @@ Kestrel is pre-1.0 and moving fast. Next up ([full list](specs/001-kestrel-v0.1/
 - [x] Alerts: stuck agent, failed run, budget threshold, PR waiting
 - [x] Estimated cost in USD next to tokens
 - [x] Stop buttons per agent and per project; budget caps that halt agents
-- [ ] `pipx install kestrel-agents`, Docker image on GHCR, v0.1.0
+- [x] `pipx install kestrel-agents`, `uvx kestrel-agents demo`, Docker image on GHCR
+- [ ] OpenTelemetry bridge, so any OTel-instrumented agent reports without an adapter
+- [ ] Team mode: one dashboard for several machines
 
 Want an adapter for your framework? [Ask for it](../../issues/new?template=adapter_request.yml),
 or build it: it is usually one file.
