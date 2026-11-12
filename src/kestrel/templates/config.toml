@@ -14,6 +14,16 @@ heartbeat_timeout = 45   # a run that sends nothing for this long is "lost"
 idle_after = 120         # an agent with no activity for this long is "idle"
 stale_after = 600        # ...and after this long "stale": it may be stuck
 
+[alerts]
+# While `kestrel watch` runs, each new alert (stuck agent, failed or lost run, budget, waiting for
+# you, pull request to review) is sent once to these places. Alerts always show on the dashboard.
+desktop = true
+webhook = ""             # a Slack or Discord incoming-webhook URL, or any URL that takes JSON
+# kinds = ["stuck", "lost", "failed", "budget", "cap", "ask", "pr"]   # which ones to send
+
+[storage]
+retention_days = 0       # delete runs last active more than this many days ago (0 = keep all)
+
 [budget]
 # Token budget lines on the dashboard; the runner's hard limits. 0 = no budget.
 agents_daily = 0

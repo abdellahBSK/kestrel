@@ -43,6 +43,24 @@ Docs: https://github.com/abdellahBSK/kestrel/tree/main/docs
 """
 
 
+def cmd_prune(args) -> int:
+    from kestrel import retention
+    from kestrel.storage.store import open_store
+
+    days = args.days if args.days is not None else meter.load_config()["storage"].get("retention_days", 0)
+    if not days or days <= 0:
+        print("Nothing to do: pass --days N, or set [storage] retention_days in config.toml.")
+        return 1
+    st = open_store()
+    res = retention.prune(st, days, dry_run=args.dry_run)
+    verb = "Would delete" if args.dry_run else "Deleted"
+    print(f"{verb} {res['runs']:,} run(s) ({res['events']:,} events) last active more than {days:g} days ago.")
+    if res["runs"] and not args.dry_run:
+        with st.lock:
+            st.db.execute("VACUUM")  # give the space back to the disk
+    return 0
+
+
 def main() -> None:
     p = argparse.ArgumentParser(
         prog="kestrel",
@@ -92,6 +110,13 @@ def main() -> None:
     wp.add_argument("--port", type=int, default=7777)
     wp.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
     wp.add_argument("--host", help="address to listen on (default 127.0.0.1, or $KESTREL_HOST)")
+    pp = sub.add_parser("prune", help="delete old runs from the event store")
+    pp.add_argument(
+        "--days",
+        type=float,
+        help="delete runs last active more than this many days ago (default: [storage] retention_days)",
+    )
+    pp.add_argument("--dry-run", action="store_true", help="only say what would be deleted")
     args = p.parse_args()
     if getattr(args, "host", None):
         os.environ["KESTREL_HOST"] = args.host  # also reaches the demo's own process
@@ -107,6 +132,8 @@ def main() -> None:
     if args.cmd in ("demo", "launch"):
         runner.cmd_demo(args, meter.load_config())
         return
+    if args.cmd == "prune":
+        sys.exit(cmd_prune(args))
     if args.cmd == "init":
         sys.exit(setup_cli.cmd_init(args))
     if args.cmd == "doctor":

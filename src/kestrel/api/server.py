@@ -24,7 +24,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from kestrel import NAME, __version__, alerts, control, meter, paths
+from kestrel import NAME, __version__, alerts, control, meter, paths, retention
 from kestrel.adapters import claude_code
 from kestrel.api import ingest
 from kestrel.core import cost, runs, status
@@ -686,6 +686,17 @@ def serve(open_browser: bool = True, port: int = PORT, host: str | None = None) 
             notify=lambda title, body, link: system.notify(title, body, link, runner_dir=paths.RUNNER),
         )
         threading.Thread(target=notifier.run, name="kestrel-alerts", daemon=True).start()
+
+        def keep_small() -> None:  # [storage] retention_days, now and once a day
+            while True:
+                try:
+                    retention.apply_setting(store(), cfg())
+                except Exception:
+                    pass
+                if notifier.stop.wait(retention.DAY):
+                    return
+
+        threading.Thread(target=keep_small, name="kestrel-retention", daemon=True).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

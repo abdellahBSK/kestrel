@@ -51,9 +51,12 @@ CONFIG_DEFAULTS: dict = {
     "monitor": {},
     "pipeline": {},
     "teams": {},
-    "projects": {},  # display names for projects that report events: [projects.<name>] title, key
+    "projects": {},  # [projects.<name>] title, key, daily_tokens, daily_usd
+    "prices": {},  # [prices."<model name part>"] input, output, cache_write, cache_read (USD per million)
+    "alerts": {"desktop": True, "webhook": ""},  # see kestrel.alerts
+    "storage": {"retention_days": 0},  # 0 = keep everything
 }
-MERGED = ("budget", "models", "monitor", "pipeline", "owner")  # sections whose keys fill in one by one
+MERGED = ("budget", "models", "monitor", "pipeline", "owner", "alerts", "storage")  # keys fill in one by one
 
 
 def load_config() -> dict:
