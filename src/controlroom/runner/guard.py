@@ -15,13 +15,14 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 if "--home" in sys.argv:  # the hook command passes the home folder explicitly
     os.environ["CONTROLROOM_HOME"] = sys.argv[sys.argv.index("--home") + 1]
 if not __package__:  # run by path as a hook script: make the package importable
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from controlroom import meter, paths  # noqa: E402
+from controlroom import meter, paths, status  # noqa: E402
 
 HQ = meter.HQ
 TEAM = os.environ.get("AGENTHQ_TEAM", "")
@@ -172,6 +173,50 @@ def check_push_and_gh(cmd: str) -> None:
                 deny("Law 2: don't change a PR's base branch.")
 
 
+# Workflow order: a role may not start while a role it depends on is still running.
+WAITS_FOR = {"tester": ("developer",), "qa": ("developer", "tester")}
+
+
+def running_subagents(event: dict, stale_after: float) -> list[str]:
+    """Roles of this run's subagents that started but have not reported back yet (stale ones excluded)."""
+    tp = event.get("transcript_path")
+    if not tp:
+        return []
+    folder = Path(tp).with_suffix("") / "subagents"
+    if not folder.is_dir():
+        return []
+    now, roles = time.time(), []
+    for mf in folder.glob("*.meta.json"):
+        meta = status.read_json(mf) or {}
+        if meta.get("finished"):
+            continue
+        transcript = mf.with_name(mf.name[: -len(".meta.json")] + ".jsonl")
+        try:
+            last = (transcript if transcript.exists() else mf).stat().st_mtime
+        except OSError:
+            continue
+        if now - last < stale_after:
+            roles.append(str(meta.get("agentType") or "subagent"))
+    return roles
+
+
+def check_order(tin: dict, event: dict, cfg: dict) -> None:
+    """QA judges a finished change and its test results, so it waits for the tester and developer."""
+    want = str(tin.get("subagent_type", ""))
+    deps = WAITS_FOR.get(want)
+    if not deps or not cfg.get("pipeline", {}).get("enforce_order", True):
+        return
+    try:
+        busy = sorted({r for r in running_subagents(event, status.thresholds(cfg)["stale_after"]) if r in deps})
+    except Exception:  # a workflow rule, not a safety one: never block work because the check broke
+        return
+    if busy:
+        deny(
+            f"Order: wait for the {' and '.join(busy)} to finish and report back before starting {want}. "
+            f"{want} must see the finished change and its results."
+        )
+
+
 def pre(event: dict) -> None:
     if (HQ / "STOP").exists():
         halt("The King raised the STOP flag. Stop now.")
@@ -223,6 +268,8 @@ def pre(event: dict) -> None:
                 deny(f"Law 3: path outside your workspace: {m.group(0)}")
         if MODE == "advisory" and re.search(r"\bgit\b[^|;&]*\b(commit|merge|cherry-pick|am|apply|stash)\b", cmd):
             deny("Advisory mode: no commits.")
+    elif tool in ("Agent", "Task"):
+        check_order(tin, event, cfg)
     elif tool in ("WebFetch", "WebSearch"):
         deny("Web access is disabled for agents.")
 
@@ -242,6 +289,31 @@ def post(event: dict) -> None:
     sys.exit(0)
 
 
+def stop(event: dict) -> None:
+    """Keep the lead from ending the run while agents it started are still working.
+
+    When the run ends its agents are stopped mid-task and their work is lost. This nudges the lead
+    once: Claude Code sets `stop_hook_active` on the retry, and then we let it end.
+    """
+    if not TEAM or event.get("stop_hook_active") or (HQ / "STOP").exists():
+        sys.exit(0)
+    cfg = meter.load_config()
+    if ALLOWANCE and used() >= ALLOWANCE * cfg["budget"].get("stop_at", 1.0):
+        sys.exit(0)
+    busy = running_subagents(event, status.thresholds(cfg)["stale_after"])
+    if busy:
+        out(
+            {
+                "decision": "block",
+                "reason": f"[Kingdom guard] {len(busy)} agent(s) you started are still working "
+                f"({', '.join(sorted(busy))}). Wait for their results before you end the run: when the run "
+                "ends they are stopped and their work is lost. Then commit, update STATE.md and write "
+                "your report.",
+            }
+        )
+    sys.exit(0)
+
+
 def main() -> None:
     raw = sys.stdin.read()
     try:
@@ -252,12 +324,14 @@ def main() -> None:
     try:
         if name == "PostToolUse":
             post(event)
+        elif name == "Stop":
+            stop(event)
         else:
             pre(event)
     except SystemExit:
         raise
-    except Exception as e:  # fail closed for pre, open for post
-        if name == "PostToolUse":
+    except Exception as e:  # fail closed for pre, open for post and stop
+        if name in ("PostToolUse", "Stop"):
             sys.exit(0)
         deny(f"guard error ({type(e).__name__}: {e}); action refused for safety.")
     sys.exit(0)

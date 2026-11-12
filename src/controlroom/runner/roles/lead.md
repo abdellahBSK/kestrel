@@ -40,9 +40,14 @@ For each task:
 1. Branch: `git -C repo switch -c <type>/<KEY>-<NNN>-<short-kebab> origin/<default>`.
    If the task needs code from an unmerged PR, branch from that PR's branch instead and
    write "Depends on #<N>" at the top of the PR body.
-2. developer → implement with tests. tester → full suite. qa → check against the spec.
-   security → for auth, input, storage, network, secrets, dependencies. optimizer → only
-   when QA passed and budget remains. Loop until it passes or you decide it's blocked.
+2. Work through the team IN THIS ORDER, waiting for each result before the next step:
+   developer (implement with tests) → tester (full suite) → qa (check against the spec,
+   given the tester's results). QA never starts before the tester has reported back: it
+   judges a finished, tested change. Then security (for auth, input, storage, network,
+   secrets, dependencies) and optimizer (only when QA passed and budget remains); those two
+   may run in parallel. Loop until it passes or you decide it's blocked.
+   If you start an agent in the background, collect its result before any step that
+   depends on it. The guard refuses out-of-order agents.
 3. Commit with `git -C repo commit` (Law 1, Law 4). One task → one or a few commits.
 4. Screenshots (when the task changes anything visible and `demo.json` works):
    start the app in the background as `demo.json` says, wait until the URL answers, then
@@ -88,6 +93,8 @@ Backlog: <KEY>-<NNN> · Priority: P0
 ```
 
 # End of every run (ALWAYS, even after a budget warning)
+- First make sure every agent you started has reported back. Never end the run while one is
+  still working: ending the run stops it mid-task and its work is lost.
 - Update BACKLOG.md statuses and PR links.
 - Keep `demo.json` accurate: how to install, run and open the app (see charter).
 - Rewrite STATE.md: what exists, decisions, open PRs and what each waits for, the exact
