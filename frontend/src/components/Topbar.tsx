@@ -1,0 +1,143 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { Menu as MenuIcon, OctagonX, Play, Search } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { action, type Overview } from "@/lib/api";
+import { duration } from "@/lib/format";
+import { href, type Route } from "@/lib/router";
+import { Button } from "./ui/button";
+import { ConfirmDialog } from "./ui/overlays";
+import { Kbd, StatusDot } from "./ui/primitives";
+
+export function useStopControls() {
+  const qc = useQueryClient();
+  const [confirmStop, setConfirmStop] = useState(false);
+  const run = async (path: string) => {
+    const res = await action(path);
+    if (res.ok) toast.success(res.msg);
+    else toast.error(res.msg);
+    qc.invalidateQueries();
+  };
+  return {
+    confirmStop,
+    setConfirmStop,
+    stop: () => run("/api/stop"),
+    resume: () => run("/api/resume"),
+  };
+}
+
+function GlobalStatus({ ov }: { ov: Overview | undefined }) {
+  if (!ov) return null;
+  if (ov.stop)
+    return (
+      <span className="border-critical/40 bg-critical/10 text-critical-ink inline-flex h-7 items-center gap-2 rounded-full border px-3 text-[12.5px] font-medium">
+        <StatusDot status="stopped" />
+        STOP raised
+      </span>
+    );
+  if (ov.running) {
+    const since = new Date(ov.running.since * 1000).toISOString();
+    return (
+      <a
+        href={href({ view: "project", team: ov.running.team, tab: "activity" })}
+        className="border-good/35 bg-good/10 text-good-ink hover:bg-good/15 inline-flex h-7 items-center gap-2 rounded-full border px-3 text-[12.5px] font-medium transition-colors"
+      >
+        <StatusDot status="working" />
+        {ov.running.team} running
+        <span className="text-good-ink/80 tabular font-normal">
+          {duration(since, new Date().toISOString())}
+        </span>
+      </a>
+    );
+  }
+  return (
+    <span className="border-line-strong text-ink-2 inline-flex h-7 items-center gap-2 rounded-full border px-3 text-[12.5px]">
+      <StatusDot status="idle" />
+      All agents idle
+    </span>
+  );
+}
+
+export function Topbar({
+  ov,
+  route,
+  controls,
+  onOpenMenu,
+  onOpenSearch,
+}: {
+  ov: Overview | undefined;
+  route: Route;
+  controls: ReturnType<typeof useStopControls>;
+  onOpenMenu: () => void;
+  onOpenSearch: () => void;
+}) {
+  const { confirmStop, setConfirmStop, stop, resume } = controls;
+  const crumb = route.view === "project" ? route.team : "Overview";
+  const isMac = navigator.platform.toLowerCase().includes("mac");
+
+  return (
+    <header className="border-line bg-page/85 sticky top-0 z-30 flex h-14 items-center gap-3 border-b px-4 backdrop-blur-md lg:px-6">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="lg:hidden"
+        onClick={onOpenMenu}
+        aria-label="Open navigation"
+      >
+        <MenuIcon />
+      </Button>
+      <div className="flex min-w-0 items-center gap-2 text-[13px]">
+        {route.view === "project" && (
+          <>
+            <a href="#/" className="text-muted hover:text-ink hidden transition-colors sm:inline">
+              Projects
+            </a>
+            <span className="text-muted/60 hidden sm:inline">/</span>
+          </>
+        )}
+        <span className="text-ink truncate font-medium">{crumb}</span>
+      </div>
+
+      <div className="ml-auto flex items-center gap-2">
+        <div className="hidden md:block">
+          <GlobalStatus ov={ov} />
+        </div>
+        <button
+          onClick={onOpenSearch}
+          className="border-line-strong bg-surface text-muted shadow-card hover:text-ink hidden h-8 w-56 items-center gap-2 rounded-md border px-2.5 text-[13px] transition-colors sm:flex"
+        >
+          <Search className="size-3.5" />
+          Search projects…
+          <span className="ml-auto flex gap-0.5">
+            <Kbd>{isMac ? "⌘" : "Ctrl"}</Kbd>
+            <Kbd>K</Kbd>
+          </span>
+        </button>
+        <Button variant="ghost" size="icon" className="sm:hidden" onClick={onOpenSearch} aria-label="Search">
+          <Search />
+        </Button>
+        {ov?.stop ? (
+          <Button variant="primary" onClick={resume}>
+            <Play />
+            Resume
+          </Button>
+        ) : (
+          <Button variant="danger" onClick={() => setConfirmStop(true)} disabled={!ov}>
+            <OctagonX />
+            <span className="hidden sm:inline">Stop all</span>
+          </Button>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={confirmStop}
+        onOpenChange={setConfirmStop}
+        title="Stop every agent?"
+        description="Running agents halt at their next action, and no new runs start until you resume. Work in progress is left uncommitted for the next run to review."
+        confirm="Stop all agents"
+        danger
+        onConfirm={stop}
+      />
+    </header>
+  );
+}

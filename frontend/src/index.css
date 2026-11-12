@@ -1,0 +1,174 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+  Design tokens. The interface itself is monochrome; color is reserved for data:
+  - --role-*   fixed categorical order (one hue per agent role, never cycled)
+  - --good/--warning/--serious/--critical   status only, always paired with an icon + label
+  Light and dark are each tuned for their own surface, not an automatic inversion.
+*/
+:root {
+  color-scheme: light;
+  --page: #f6f6f4;
+  --surface: #fcfcfb;
+  --surface-2: #f1f1ee;
+  --surface-3: #e8e8e4;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #7d7b75;
+  --line: rgb(11 11 11 / 0.08);
+  --line-strong: rgb(11 11 11 / 0.14);
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --overlay: rgb(11 11 11 / 0.32);
+  --shadow: 0 1px 2px rgb(11 11 11 / 0.04), 0 4px 16px -4px rgb(11 11 11 / 0.08);
+  --shadow-lg: 0 12px 48px -12px rgb(11 11 11 / 0.28);
+
+  --role-1: #2a78d6; /* lead */
+  --role-2: #eb6834; /* developer */
+  --role-3: #1baf7a; /* tester */
+  --role-4: #eda100; /* qa */
+  --role-5: #e87ba4; /* security */
+  --role-6: #008300; /* optimizer */
+  --role-7: #6250d6;
+  --role-other: #898781;
+
+  --good: #0ca30c;
+  --good-ink: #006300;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --critical-ink: #b42323;
+  --info: #2a78d6;
+
+  --series-agents: #2a78d6;
+  --series-you: #eb6834;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #161615;
+  --surface-2: #1d1d1c;
+  --surface-3: #262624;
+  --ink: #f0efec;
+  --ink-2: #c3c2b7;
+  --muted: #8f8d86;
+  --line: rgb(255 255 255 / 0.07);
+  --line-strong: rgb(255 255 255 / 0.13);
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --overlay: rgb(0 0 0 / 0.6);
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 16px 64px -12px rgb(0 0 0 / 0.7);
+
+  --role-1: #3987e5;
+  --role-2: #d95926;
+  --role-3: #199e70;
+  --role-4: #c98500;
+  --role-5: #d55181;
+  --role-6: #008300;
+  --role-7: #9085e9;
+
+  --good-ink: #0ca30c;
+  --critical-ink: #ef6b6b;
+  --info: #3987e5;
+
+  --series-agents: #3987e5;
+  --series-you: #d95926;
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-good: var(--good);
+  --color-good-ink: var(--good-ink);
+  --color-warning: var(--warning);
+  --color-serious: var(--serious);
+  --color-critical: var(--critical);
+  --color-critical-ink: var(--critical-ink);
+  --color-info: var(--info);
+
+  --shadow-card: var(--shadow);
+  --shadow-pop: var(--shadow-lg);
+
+  --animate-pulse-ring: pulse-ring 1.8s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
+  --animate-fade-in: fade-in 140ms ease-out;
+  --animate-pop-in: pop-in 160ms cubic-bezier(0.2, 0.8, 0.3, 1);
+
+  @keyframes pulse-ring {
+    0% {
+      box-shadow: 0 0 0 0 color-mix(in oklab, var(--good) 55%, transparent);
+    }
+    70%,
+    100% {
+      box-shadow: 0 0 0 6px color-mix(in oklab, var(--good) 0%, transparent);
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px) scale(0.98);
+    }
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--info) 28%, transparent);
+  }
+  :focus-visible {
+    outline: 2px solid var(--info);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}

@@ -20,6 +20,12 @@ python -m venv .venv
 .venv/bin/pip install -e ".[dev]"     # Windows: .venv\Scripts\pip install -e ".[dev]"
 ```
 
+Build the web dashboard once (needs Node 20+):
+
+```bash
+cd frontend && npm ci && npm run build && cd ..
+```
+
 Your config and data live in a home folder: `$CONTROLROOM_HOME`, or `~/.controlroom` by default.
 
 ```bash
@@ -45,9 +51,21 @@ cross-site requests. It sends no telemetry.
 ## Development
 
 ```bash
-ruff check . && ruff format --check .
-pytest
+ruff check . && ruff format --check .   # Python lint and format
+pytest                                  # Python tests
 ```
+
+The dashboard is a React + TypeScript app in `frontend/` (Vite, Tailwind CSS, Radix UI, TanStack
+Query). For live reload, run `controlroom watch --no-browser` and, in another terminal:
+
+```bash
+cd frontend
+npm run dev          # http://localhost:5173, proxies /api to the Python server on :7777
+npm run typecheck && npm run lint && npm run format:check
+```
+
+`npm run build` writes the production bundle into `src/controlroom/static/`, which the Python
+server serves. Fonts are bundled locally: the page makes no requests to other hosts.
 
 ## License
 
