@@ -7,6 +7,7 @@ PostToolUse: warns the agent to wrap up when it reaches the warning threshold.
 Environment (set by kingdom.py for each run):
   AGENTHQ_TEAM, AGENTHQ_ALLOWANCE (tokens), AGENTHQ_SINCE (epoch seconds), AGENTHQ_MODE
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -34,8 +35,11 @@ READ_TOOLS = {"Read", "Glob", "Grep"}
 
 PR_MODE = os.environ.get("AGENTHQ_PR_MODE", "none")
 TASK_BRANCH = r"(feat|fix|refactor|perf|test|docs|chore|security)/[A-Z]{3}-\d{3}-[a-z0-9][a-z0-9-]*"
-PUSH_OK = re.compile(r"^git(\s+-C\s+(\"[^\"]+\"|'[^']+'|\S+))?\s+push\s+(-u\s+|--set-upstream\s+)?origin\s+"
-                     + TASK_BRANCH + r"(\s+2>&1)?$")
+PUSH_OK = re.compile(
+    r"^git(\s+-C\s+(\"[^\"]+\"|'[^']+'|\S+))?\s+push\s+(-u\s+|--set-upstream\s+)?origin\s+"
+    + TASK_BRANCH
+    + r"(\s+2>&1)?$"
+)
 GH_OK = re.compile(r"^gh(\.exe)?\s+pr\s+(create|view|list|edit|comment|checks|diff|status)\b")
 TOOLS = {(paths.RUNNER / "shoot.py").resolve(), (paths.RUNNER / "preview.py").resolve()}
 
@@ -45,13 +49,18 @@ BANNED_BASH = [
     (r"\b(npm|yarn|pnpm)\s+publish\b|\btwine\s+upload\b|\bmvn\b[^|;&]*\bdeploy\b", "Law 2: no publishing."),
     (r"\bdocker\s+(push|login)\b", "Law 2: no registry pushes."),
     (r"\bgit\s+config\b[^|;&]*(--global|--system|user\.(name|email))", "Law 1: never change git identity/config."),
-    (r"--no-verify|\bgit\b[^|;&]*(--force\b|\s-f\b)|\bgit\s+reset\s+--hard\b|\bgit\s+filter-|\bgit\s+rebase\b", "Law 4: no history rewriting or skipping hooks."),
+    (
+        r"--no-verify|\bgit\b[^|;&]*(--force\b|\s-f\b)|\bgit\s+reset\s+--hard\b|\bgit\s+filter-|\bgit\s+rebase\b",
+        "Law 4: no history rewriting or skipping hooks.",
+    ),
     (r"(?i)co-authored-by|generated with \[?claude|noreply@anthropic", "Law 1: no Claude attribution."),
     (r"(?i)(\.ssh|\.aws|\.azure|\.gnupg|\.claude|\.credentials|id_rsa|id_ed25519)", "Law 3: sensitive location."),
     (r"(?i)(^|[\s'\"=/\\])\.env(?!\.example|\.sample|\.template)\b", "Law 3: never read or write .env files."),
     (r"(?i)\$HOME|%USERPROFILE%|\$env:USERPROFILE|(^|\s)~[/\\]", "Law 3: stay in your workspace."),
-    (r"(?i)\b(curl|wget|invoke-webrequest|iwr|invoke-restmethod|irm)\b(?![^|;&]*\b(localhost|127\.0\.0\.1)\b)[^|;&]*https?://",
-     "Law 2: no outbound HTTP except localhost (use the package manager to install deps)."),
+    (
+        r"(?i)\b(curl|wget|invoke-webrequest|iwr|invoke-restmethod|irm)\b(?![^|;&]*\b(localhost|127\.0\.0\.1)\b)[^|;&]*https?://",
+        "Law 2: no outbound HTTP except localhost (use the package manager to install deps).",
+    ),
 ]
 
 ABS_PATH = re.compile(r"(?i)(?<![\w.])(?:[a-z]:[\\/]|/[a-z]/)[^\s'\"|;&]*")
@@ -63,9 +72,15 @@ def out(obj: dict) -> None:
 
 
 def deny(reason: str) -> None:
-    out({"hookSpecificOutput": {"hookEventName": "PreToolUse",
-                                "permissionDecision": "deny",
-                                "permissionDecisionReason": f"[Kingdom guard] {reason}"}})
+    out(
+        {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": f"[Kingdom guard] {reason}",
+            }
+        }
+    )
 
 
 def halt(reason: str) -> None:
@@ -106,6 +121,7 @@ def session_dirs(event: dict) -> list[Path]:
     if not re.fullmatch(r"[0-9a-fA-F-]{36}", sid):
         return []
     import tempfile
+
     base = Path(tempfile.gettempdir()) / "claude"
     try:
         return [d.resolve() for d in base.glob(f"*/{sid}") if d.is_dir()]
@@ -138,14 +154,18 @@ def check_push_and_gh(cmd: str) -> None:
             if PR_MODE == "none":
                 deny("Law 2: this team pushes nothing (PR MODE = none).")
             if not PUSH_OK.match(seg):
-                deny("Law 2: only `git push -u origin <type>/<KEY>-<NNN>-<desc>` is allowed "
-                     "(exact task branch name; no main, HEAD, force, delete or tags).")
+                deny(
+                    "Law 2: only `git push -u origin <type>/<KEY>-<NNN>-<desc>` is allowed "
+                    "(exact task branch name; no main, HEAD, force, delete or tags)."
+                )
         if re.match(r"^gh(\.exe)?\s", seg_l):
             if PR_MODE == "none":
                 deny("Law 2: this team opens no PRs (PR MODE = none).")
             if not GH_OK.match(seg):
-                deny("Law 2: only `gh pr create|view|list|edit|comment|checks|diff|status` is allowed. "
-                     "Merging, approving, marking ready and other gh commands are the King's.")
+                deny(
+                    "Law 2: only `gh pr create|view|list|edit|comment|checks|diff|status` is allowed. "
+                    "Merging, approving, marking ready and other gh commands are the King's."
+                )
             if re.search(r"\bpr\s+create\b", seg) and PR_MODE == "draft" and "--draft" not in seg:
                 deny("Law 2: PR MODE = draft, so open the PR with --draft.")
             if re.search(r"\bpr\s+edit\b", seg) and re.search(r"--base\b", seg):
@@ -183,7 +203,11 @@ def pre(event: dict) -> None:
         target = norm(tin.get("file_path") or tin.get("path") or "")
         if target is not None and not allowed(target):
             deny(f"Law 3: you may only read inside {TEAM_DIR}.")
-        if target is not None and target.name.startswith(".env") and not re.search(r"example|sample|template", target.name):
+        if (
+            target is not None
+            and target.name.startswith(".env")
+            and not re.search(r"example|sample|template", target.name)
+        ):
             deny("Law 3: never read .env files.")
     elif tool in ("Bash", "PowerShell"):
         cmd = tin.get("command", "")
@@ -209,9 +233,11 @@ def post(event: dict) -> None:
     cfg = meter.load_config()
     u = used()
     if u >= ALLOWANCE * cfg["budget"].get("warn_at", 0.8):
-        msg = (f"BUDGET WARNING: {u:,} of {ALLOWANCE:,} tokens used ({u / ALLOWANCE:.0%}). "
-               "Start no new task. Commit finished work, update BACKLOG.md and STATE.md, "
-               "write your report, then end the run. Subagents: finish and report back now.")
+        msg = (
+            f"BUDGET WARNING: {u:,} of {ALLOWANCE:,} tokens used ({u / ALLOWANCE:.0%}). "
+            "Start no new task. Commit finished work, update BACKLOG.md and STATE.md, "
+            "write your report, then end the run. Subagents: finish and report back now."
+        )
         out({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": msg}})
     sys.exit(0)
 

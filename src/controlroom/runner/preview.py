@@ -6,6 +6,7 @@ Images go to `agent-previews:<task-branch>/<file>` using git plumbing (the worki
 the task branch are untouched), so they never end up in main. The printed links render in
 the PR for anyone with access to the repo (private repos included).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -22,8 +23,7 @@ REF = "agent-previews"
 
 
 def git(repo: str, *args: str, env: dict | None = None, check: bool = True, data: bytes | None = None) -> str:
-    r = subprocess.run(["git", "-C", repo, *args], capture_output=True, input=data,
-                       env={**os.environ, **(env or {})})
+    r = subprocess.run(["git", "-C", repo, *args], capture_output=True, input=data, env={**os.environ, **(env or {})})
     if check and r.returncode != 0:
         sys.exit(f"git {' '.join(args)} failed: {r.stderr.decode(errors='replace').strip()}")
     return r.stdout.decode(errors="replace").strip()
@@ -64,8 +64,9 @@ def main() -> None:
         if parent:
             args[2:2] = ["-p", parent]
         commit = git(a.repo, *args)
-        r = subprocess.run(["git", "-C", a.repo, "push", "-q", "origin", f"{commit}:refs/heads/{REF}"],
-                           capture_output=True)
+        r = subprocess.run(
+            ["git", "-C", a.repo, "push", "-q", "origin", f"{commit}:refs/heads/{REF}"], capture_output=True
+        )
         if r.returncode == 0:
             break
         if attempt == 1:

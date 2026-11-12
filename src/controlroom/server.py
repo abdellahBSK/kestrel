@@ -6,11 +6,11 @@ Reads only local files (team folders, Claude Code session logs, state/) plus you
 for PRs. Listens on 127.0.0.1 only. Buttons require a same-origin request with a custom
 header, so other websites can't trigger them.
 """
+
 from __future__ import annotations
 
 import datetime as dt
 import json
-import mimetypes
 import os
 import re
 import subprocess
@@ -32,6 +32,7 @@ ROLE_ORDER = ["lead", "developer", "tester", "qa", "security", "optimizer"]
 
 
 # ───────────────────────────── caching ─────────────────────────────
+
 
 class Cache:
     def __init__(self):
@@ -62,6 +63,7 @@ def cfg() -> dict:
 
 # ───────────────────────────── sessions ─────────────────────────────
 
+
 def sessions(team: str, limit: int = 12) -> list[dict]:
     """Agent-team sessions for a team, newest first."""
     out = []
@@ -81,7 +83,7 @@ def rel(path: str, team: str) -> str:
     p = str(path).replace("\\", "/")
     root = (TEAMS / team).as_posix()
     i = p.lower().find(root.lower())
-    return p[i + len(root) + 1:] if i != -1 else p
+    return p[i + len(root) + 1 :] if i != -1 else p
 
 
 def summarize(tool: str, inp: dict, team: str) -> str:
@@ -129,10 +131,12 @@ def parse_log(path: Path, agent: str, team: str) -> tuple[list[dict], dict]:
             if u and key not in seen:
                 seen.add(key)
                 f = meter.model_factor(msg.get("model", ""))
-                usage["tokens"] += f * ((u.get("input_tokens") or 0) * w.get("weight_input", 1)
-                                        + (u.get("output_tokens") or 0) * w.get("weight_output", 1)
-                                        + (u.get("cache_creation_input_tokens") or 0) * w.get("weight_cache_write", 1)
-                                        + (u.get("cache_read_input_tokens") or 0) * w.get("weight_cache_read", 0))
+                usage["tokens"] += f * (
+                    (u.get("input_tokens") or 0) * w.get("weight_input", 1)
+                    + (u.get("output_tokens") or 0) * w.get("weight_output", 1)
+                    + (u.get("cache_creation_input_tokens") or 0) * w.get("weight_cache_write", 1)
+                    + (u.get("cache_read_input_tokens") or 0) * w.get("weight_cache_read", 0)
+                )
                 usage["calls"] += 1
                 usage["model"] = msg.get("model", usage.get("model"))
             for c in msg.get("content") or []:
@@ -141,8 +145,14 @@ def parse_log(path: Path, agent: str, team: str) -> tuple[list[dict], dict]:
                 if c.get("type") == "text" and c.get("text", "").strip():
                     events.append({"ts": ts, "agent": agent, "kind": "say", "text": short(c["text"], 300)})
                 elif c.get("type") == "tool_use":
-                    ev = {"ts": ts, "agent": agent, "kind": "tool", "tool": c.get("name"),
-                          "text": summarize(c.get("name", ""), c.get("input") or {}, team), "status": "running"}
+                    ev = {
+                        "ts": ts,
+                        "agent": agent,
+                        "kind": "tool",
+                        "tool": c.get("name"),
+                        "text": summarize(c.get("name", ""), c.get("input") or {}, team),
+                        "status": "running",
+                    }
                     if c.get("name") in ("Agent", "Task"):
                         ev["kind"] = "delegate"
                     by_id[c.get("id")] = ev
@@ -168,11 +178,24 @@ def parse_log(path: Path, agent: str, team: str) -> tuple[list[dict], dict]:
                     if any(e["kind"] == "budget" for e in events):
                         continue  # the hook repeats it after every action; show the first one only
                     m = re.search(r"BUDGET WARNING: ([^.]*)", out)
-                    events.append({"ts": ts, "agent": agent, "kind": "budget",
-                                   "text": "Budget warning: " + (m.group(1) if m else "80% reached")})
+                    events.append(
+                        {
+                            "ts": ts,
+                            "agent": agent,
+                            "kind": "budget",
+                            "text": "Budget warning: " + (m.group(1) if m else "80% reached"),
+                        }
+                    )
                 elif "allowance exhausted" in out or "STOP flag" in out:
-                    events.append({"ts": ts, "agent": agent, "kind": "halt", "text": "Stopped by the guard: "
-                                   + ("token allowance exhausted" if "allowance" in out else "STOP flag")})
+                    events.append(
+                        {
+                            "ts": ts,
+                            "agent": agent,
+                            "kind": "halt",
+                            "text": "Stopped by the guard: "
+                            + ("token allowance exhausted" if "allowance" in out else "STOP flag"),
+                        }
+                    )
     return events, usage
 
 
@@ -186,9 +209,16 @@ def session_detail(team: str, sid: str | None) -> dict:
 
     def build():
         events, lead_usage = parse_log(s["path"], "lead", team)
-        agents = [{"role": "lead", "description": "Team lead", "finished": not live,
-                   "tokens": int(lead_usage["tokens"]), "actions": sum(e["kind"] in ("tool", "delegate") for e in events),
-                   "model": lead_usage.get("model", "")}]
+        agents = [
+            {
+                "role": "lead",
+                "description": "Team lead",
+                "finished": not live,
+                "tokens": int(lead_usage["tokens"]),
+                "actions": sum(e["kind"] in ("tool", "delegate") for e in events),
+                "model": lead_usage.get("model", ""),
+            }
+        ]
         subdir = s["path"].with_suffix("")
         for f in sorted((subdir / "subagents").glob("*.jsonl")) if (subdir / "subagents").exists() else []:
             meta = {}
@@ -202,20 +232,35 @@ def session_detail(team: str, sid: str | None) -> dict:
             ev, us = parse_log(f, role, team)
             events.extend(ev)
             times = [e["ts"] for e in ev if e.get("ts")]
-            agents.append({"role": role, "description": meta.get("description", ""), "finished": bool(meta.get("finished")),
-                           "tokens": int(us["tokens"]), "actions": sum(e["kind"] == "tool" for e in ev),
-                           "model": us.get("model", ""), "start": min(times) if times else None,
-                           "end": max(times) if times else None})
+            agents.append(
+                {
+                    "role": role,
+                    "description": meta.get("description", ""),
+                    "finished": bool(meta.get("finished")),
+                    "tokens": int(us["tokens"]),
+                    "actions": sum(e["kind"] == "tool" for e in ev),
+                    "model": us.get("model", ""),
+                    "start": min(times) if times else None,
+                    "end": max(times) if times else None,
+                }
+            )
         events.sort(key=lambda e: e.get("ts") or "")
         return {"events": events[-600:], "agents": agents}
 
     data = CACHE.get(f"sess:{s['id']}:{s['mtime']}", 2 if live else 300, build)
-    return {"team": team, "session": s["id"], "live": live,
-            "sessions": [{"id": x["id"], "when": dt.datetime.fromtimestamp(x["mtime"]).strftime("%a %d %b %H:%M")} for x in ss],
-            **data}
+    return {
+        "team": team,
+        "session": s["id"],
+        "live": live,
+        "sessions": [
+            {"id": x["id"], "when": dt.datetime.fromtimestamp(x["mtime"]).strftime("%a %d %b %H:%M")} for x in ss
+        ],
+        **data,
+    }
 
 
 # ───────────────────────────── overview ─────────────────────────────
+
 
 def current_run() -> dict | None:
     f = HQ / "state" / "current.json"
@@ -231,8 +276,10 @@ def current_run() -> dict | None:
 def backlog_counts(team: str) -> dict:
     f = TEAMS / team / "BACKLOG.md"
     text = f.read_text(encoding="utf-8") if f.exists() else ""
-    c = {k: len(re.findall(rf"^\s*-\s*\[{re.escape(m)}\]", text, re.M))
-         for k, m in (("todo", " "), ("doing", "~"), ("review", "r"), ("done", "x"), ("blocked", "!"))}
+    c = {
+        k: len(re.findall(rf"^\s*-\s*\[{re.escape(m)}\]", text, re.M))
+        for k, m in (("todo", " "), ("doing", "~"), ("review", "r"), ("done", "x"), ("blocked", "!"))
+    }
     return c
 
 
@@ -254,6 +301,7 @@ def prs_all() -> dict:
             except Exception:
                 out[team] = []
         return out
+
     return CACHE.get("prs", 90, fetch)
 
 
@@ -283,36 +331,69 @@ def overview() -> dict:
         used = 0
         if running:
             used = meter.team_used_since(team, dt.datetime.fromtimestamp(cur["since"]).astimezone(), c)
-        teams.append({
-            "team": team, "title": t.get("title", ""), "key": t.get("key", ""), "mode": t.get("mode", "build"),
-            "pr_mode": t.get("pr_mode", "none"), "enabled": t.get("enabled", True),
-            "scheduled_today": team in c["schedule"].get(today, []),
-            "running": running, "now": now, "allowance": cur.get("allowance") if running else 0, "used": used,
-            "last_run": dt.datetime.fromtimestamp(last["mtime"]).strftime("%a %d %b %H:%M") if last else None,
-            "today_tokens": s["today"].get(f"team:{team}", 0), "week_tokens": s["week"].get(f"team:{team}", 0),
-            "backlog": backlog_counts(team), "prs": prs.get(team, []), "questions": questions(team),
-            "previews": previews(team),
-        })
+        teams.append(
+            {
+                "team": team,
+                "title": t.get("title", ""),
+                "key": t.get("key", ""),
+                "mode": t.get("mode", "build"),
+                "pr_mode": t.get("pr_mode", "none"),
+                "enabled": t.get("enabled", True),
+                "scheduled_today": team in c["schedule"].get(today, []),
+                "running": running,
+                "now": now,
+                "allowance": cur.get("allowance") if running else 0,
+                "used": used,
+                "last_run": dt.datetime.fromtimestamp(last["mtime"]).strftime("%a %d %b %H:%M") if last else None,
+                "today_tokens": s["today"].get(f"team:{team}", 0),
+                "week_tokens": s["week"].get(f"team:{team}", 0),
+                "backlog": backlog_counts(team),
+                "prs": prs.get(team, []),
+                "questions": questions(team),
+                "previews": previews(team),
+            }
+        )
     b = c["budget"]
     return {
-        "now": dt.datetime.now().strftime("%H:%M:%S"), "stop": (HQ / "STOP").exists(), "running": cur,
-        "budget": {"agents_today": s["today"]["agents"], "agents_daily": b["agents_daily"],
-                   "agents_week": s["week"]["agents"], "agents_weekly": b["agents_weekly"],
-                   "you_today": s["today"]["personal"], "you_week": s["week"]["personal"], "pool": pool,
-                   "warn_at": b.get("warn_at", 0.8)},
-        "schedule": {d: c["schedule"].get(d, []) for d in kingdom.DAYS}, "today": today, "teams": teams,
+        "now": dt.datetime.now().strftime("%H:%M:%S"),
+        "stop": (HQ / "STOP").exists(),
+        "running": cur,
+        "budget": {
+            "agents_today": s["today"]["agents"],
+            "agents_daily": b["agents_daily"],
+            "agents_week": s["week"]["agents"],
+            "agents_weekly": b["agents_weekly"],
+            "you_today": s["today"]["personal"],
+            "you_week": s["week"]["personal"],
+            "pool": pool,
+            "warn_at": b.get("warn_at", 0.8),
+        },
+        "schedule": {d: c["schedule"].get(d, []) for d in kingdom.DAYS},
+        "today": today,
+        "teams": teams,
     }
 
 
 # ───────────────────────────── actions ─────────────────────────────
 
+
 def spawn(args: list[str], window: bool) -> None:
     flags = subprocess.CREATE_NEW_CONSOLE if window else (subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS)
-    env = {**os.environ, paths.HOME_ENV: str(HQ),
-           "PYTHONPATH": os.pathsep.join(filter(None, [str(paths.PKG.parent), os.environ.get("PYTHONPATH")]))}
-    subprocess.Popen([sys.executable, "-m", "controlroom", *args], cwd=HQ, creationflags=flags, env=env,
-                     close_fds=True, stdin=subprocess.DEVNULL,
-                     stdout=None if window else subprocess.DEVNULL, stderr=None if window else subprocess.DEVNULL)
+    env = {
+        **os.environ,
+        paths.HOME_ENV: str(HQ),
+        "PYTHONPATH": os.pathsep.join(filter(None, [str(paths.PKG.parent), os.environ.get("PYTHONPATH")])),
+    }
+    subprocess.Popen(
+        [sys.executable, "-m", "controlroom", *args],
+        cwd=HQ,
+        creationflags=flags,
+        env=env,
+        close_fds=True,
+        stdin=subprocess.DEVNULL,
+        stdout=None if window else subprocess.DEVNULL,
+        stderr=None if window else subprocess.DEVNULL,
+    )
 
 
 def act(path: str, q: dict) -> dict:
@@ -341,6 +422,7 @@ def act(path: str, q: dict) -> dict:
 
 
 # ───────────────────────────── http ─────────────────────────────
+
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):  # quiet
@@ -388,8 +470,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         origin = self.headers.get("Origin", "")
-        if (not self._ok_host() or self.headers.get("X-Kingdom") != "1"
-                or (origin and urlparse(origin).netloc not in HOSTS)):
+        if (
+            not self._ok_host()
+            or self.headers.get("X-Kingdom") != "1"
+            or (origin and urlparse(origin).netloc not in HOSTS)
+        ):
             return self._send(403, b"forbidden", "text/plain")
         u = urlparse(self.path)
         res = act(u.path, parse_qs(u.query))
@@ -403,6 +488,7 @@ def serve(open_browser: bool = True) -> None:
     print(f"{NAME}: {url}   (Ctrl+C to close)")
     if open_browser:
         import webbrowser
+
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:
         srv.serve_forever()

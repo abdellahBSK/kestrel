@@ -1,12 +1,13 @@
 """The Master — orchestrates the King's agent teams.
 
-  controlroom status                      usage today / this week, budget left
-  controlroom baseline                    your personal daily usage stats
-  controlroom setup [team ...]             create/refresh team workspaces
-  controlroom run [--team T] [--force] [--dry-run]
-                                           today's run (once per day unless --force)
-  controlroom brief [YYYY-MM-DD]           rebuild the daily brief
+controlroom status                      usage today / this week, budget left
+controlroom baseline                    your personal daily usage stats
+controlroom setup [team ...]             create/refresh team workspaces
+controlroom run [--team T] [--force] [--dry-run]
+                                         today's run (once per day unless --force)
+controlroom brief [YYYY-MM-DD]           rebuild the daily brief
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,8 +45,9 @@ def log(msg: str) -> None:
 
 def git(repo: Path, *args: str, check: bool = True, env: dict | None = None) -> str:
     e = {**os.environ, "GIT_CEILING_DIRECTORIES": str(TEAMS), **(env or {})}
-    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
-                       encoding="utf-8", errors="replace", env=e)
+    r = subprocess.run(
+        ["git", "-C", str(repo), *args], capture_output=True, text=True, encoding="utf-8", errors="replace", env=e
+    )
     if check and r.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed: {r.stderr.strip()}")
     return r.stdout.strip()
@@ -56,6 +58,7 @@ def fmt(n: int) -> str:
 
 
 # ───────────────────────────── workspace setup ─────────────────────────────
+
 
 def gh_slug(t: dict) -> str:
     m = re.search(r"github\.com[/:]([^/]+/[^/]+?)(\.git)?$", t.get("repo", ""))
@@ -91,12 +94,12 @@ def charter(team: str, t: dict, cfg: dict) -> str:
     tools = paths.RUNNER.as_posix()
     return f"""# Team charter: {team}
 
-PROJECT: {t['title']}
-MODE: {t.get('mode', 'build')}
-KEY: {t.get('key', 'XXX')}   (backlog IDs and branches: {t.get('key', 'XXX')}-001, feat/{t.get('key', 'XXX')}-001-short-name)
-GITHUB: {gh_slug(t) or '(none)'}   DEFAULT BRANCH: {base}
-PR MODE: {t.get('pr_mode', 'none')}   gh pr create flags: {pr_flags(t, cfg)}
-FOCUS (from the King): {t.get('focus', '')}
+PROJECT: {t["title"]}
+MODE: {t.get("mode", "build")}
+KEY: {t.get("key", "XXX")}   (backlog IDs and branches: {t.get("key", "XXX")}-001, feat/{t.get("key", "XXX")}-001-short-name)
+GITHUB: {gh_slug(t) or "(none)"}   DEFAULT BRANCH: {base}
+PR MODE: {t.get("pr_mode", "none")}   gh pr create flags: {pr_flags(t, cfg)}
+FOCUS (from the King): {t.get("focus", "")}
 
 ## Your workspace (you may only touch this folder)
 - `repo/`       the git repository (one task branch per backlog item)
@@ -109,7 +112,7 @@ FOCUS (from the King): {t.get('focus', '')}
 - `previews/`   screenshots you take
 - `reports/`    one report per run + PR bodies (`reports/pr-<KEY>-<NNN>.md`)
 
-Run git as `git -C repo ...` and gh as `gh pr ... --repo {gh_slug(t) or '<owner/name>'}` from this folder.
+Run git as `git -C repo ...` and gh as `gh pr ... --repo {gh_slug(t) or "<owner/name>"}` from this folder.
 
 ## Kingdom tools (the only outside programs you may run)
 - Screenshot a local page:  `python {tools}/shoot.py <http://localhost:...> previews/<name>.png --size 390x844`
@@ -126,8 +129,20 @@ def settings_json() -> dict:
         "attribution": {"commit": "", "pr": ""},
         "permissions": {
             "defaultMode": "dontAsk",
-            "allow": ["Read", "Glob", "Grep", "Edit", "Write", "MultiEdit", "NotebookEdit",
-                      "Bash", "PowerShell", "Agent", "Task", "TodoWrite"],
+            "allow": [
+                "Read",
+                "Glob",
+                "Grep",
+                "Edit",
+                "Write",
+                "MultiEdit",
+                "NotebookEdit",
+                "Bash",
+                "PowerShell",
+                "Agent",
+                "Task",
+                "TodoWrite",
+            ],
             "deny": ["WebFetch", "WebSearch"],
         },
         "hooks": {
@@ -157,8 +172,13 @@ def ensure_repo(team: str, t: dict, cfg: dict) -> Path:
         if url:
             m = re.search(r"github\.com[/:]([^/]+/[^/.]+)", url)
             log(f"{team}: cloning {url}")
-            r = subprocess.run(["gh", "repo", "clone", m.group(1) if m else url, str(repo)],
-                               capture_output=True, text=True, encoding="utf-8", errors="replace")
+            r = subprocess.run(
+                ["gh", "repo", "clone", m.group(1) if m else url, str(repo)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
             if r.returncode != 0 and not (repo / ".git").exists():
                 raise RuntimeError(f"clone failed: {r.stderr.strip()}")
         else:
@@ -198,9 +218,25 @@ def ensure_labels(t: dict, cfg: dict) -> None:
     if marker.exists():
         return
     STATE.mkdir(exist_ok=True)
-    r = subprocess.run(["gh", "label", "create", "agent", "--repo", slug, "--color", "B3122E",
-                        "--description", "Opened by the agent team", "--force"],
-                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    r = subprocess.run(
+        [
+            "gh",
+            "label",
+            "create",
+            "agent",
+            "--repo",
+            slug,
+            "--color",
+            "B3122E",
+            "--description",
+            "Opened by the agent team",
+            "--force",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     if r.returncode == 0:
         marker.write_text("ok")
 
@@ -234,8 +270,18 @@ def setup_team(team: str, cfg: dict) -> Path:
     for sub in ("specs", "reports", "previews", ".claude/agents"):
         (tdir / sub).mkdir(parents=True, exist_ok=True)
     if not (tdir / "demo.json").exists():
-        demo = DEMO_DEFAULTS.get(team, {"cwd": ".", "install": "", "run": "", "url": "", "screens": ["/"],
-                                        "size": "1280x800", "note": "Not runnable yet: the team fills this in."})
+        demo = DEMO_DEFAULTS.get(
+            team,
+            {
+                "cwd": ".",
+                "install": "",
+                "run": "",
+                "url": "",
+                "screens": ["/"],
+                "size": "1280x800",
+                "note": "Not runnable yet: the team fills this in.",
+            },
+        )
         (tdir / "demo.json").write_text(json.dumps(demo, indent=2), encoding="utf-8")
     for s in t.get("specs", []):
         src = Path(s)
@@ -250,8 +296,10 @@ def setup_team(team: str, cfg: dict) -> Path:
         body = (paths.RUNNER / "roles" / f"{role}.md").read_text(encoding="utf-8")
         body = body.replace("{MODEL}", cfg["models"].get(role, "sonnet")) + "\n" + KINGDOM_SIGNALS
         (tdir / ".claude" / "agents" / f"{role}.md").write_text(body, encoding="utf-8")
-    for name, initial in (("BACKLOG.md", f"# Backlog: {team}\n\n(empty: the lead builds it on the first run)\n"),
-                          ("STATE.md", f"# State: {team}\n\nFirst run: nothing done yet.\n")):
+    for name, initial in (
+        ("BACKLOG.md", f"# Backlog: {team}\n\n(empty: the lead builds it on the first run)\n"),
+        ("STATE.md", f"# State: {team}\n\nFirst run: nothing done yet.\n"),
+    ):
         if not (tdir / name).exists():
             (tdir / name).write_text(initial, encoding="utf-8")
     ensure_repo(team, t, cfg)
@@ -259,6 +307,7 @@ def setup_team(team: str, cfg: dict) -> Path:
 
 
 # ───────────────────────────── budget ─────────────────────────────
+
 
 def pool_today(cfg: dict) -> tuple[int, dict]:
     b = cfg["budget"]
@@ -271,6 +320,7 @@ def pool_today(cfg: dict) -> tuple[int, dict]:
 
 
 # ───────────────────────────── run ─────────────────────────────
+
 
 def agents_json(tdir: Path) -> str:
     """Subagent definitions for --agents, built from the team's generated role files."""
@@ -293,9 +343,11 @@ def agents_json(tdir: Path) -> str:
 def lead_prompt(team: str, t: dict, today: str, allowance: int) -> tuple[str, str]:
     system = (paths.RUNNER / "roles" / "lead.md").read_text(encoding="utf-8")
     system = system.replace("{DATE}", today).replace("{TEAM}", team)
-    user = (f"Start today's run.\nDate: {today}\nTeam: {team}\nMode: {t.get('mode', 'build')}\n"
-            f"Token allowance for this run: {allowance:,} (warning at 80%, hard stop at 100%).\n"
-            f"Write your report to reports/{today}.md before ending.")
+    user = (
+        f"Start today's run.\nDate: {today}\nTeam: {team}\nMode: {t.get('mode', 'build')}\n"
+        f"Token allowance for this run: {allowance:,} (warning at 80%, hard stop at 100%).\n"
+        f"Write your report to reports/{today}.md before ending."
+    )
     return system, user
 
 
@@ -307,27 +359,48 @@ def run_team(team: str, cfg: dict, allowance: int, today: str, dry: bool) -> dic
     sid = str(uuid.uuid4())
     claude = shutil.which("claude") or "claude"
     ids = cfg.get("model_ids", {})
-    cmd = [claude, "-p", user,
-           "--model", ids.get(cfg["models"].get("lead", "opus"), cfg["models"].get("lead", "opus")),
-           "--fallback-model", ids.get(cfg["models"].get("lead_fallback", "sonnet"), cfg["models"].get("lead_fallback", "sonnet")),
-           "--effort", cfg["models"].get("lead_effort", "high"),
-           "--append-system-prompt", system,
-           "--permission-mode", "dontAsk",
-           # team settings passed explicitly: flag settings don't depend on workspace trust
-           "--settings", str(tdir / ".claude" / "settings.json"),
-           "--setting-sources", "local",
-           "--agents", agents_json(tdir),
-           "--strict-mcp-config",
-           "--disallowedTools", "WebFetch,WebSearch",
-           "--session-id", sid,
-           "--name", f"agenthq-{team}-{today}",
-           "--output-format", "json"]
+    cmd = [
+        claude,
+        "-p",
+        user,
+        "--model",
+        ids.get(cfg["models"].get("lead", "opus"), cfg["models"].get("lead", "opus")),
+        "--fallback-model",
+        ids.get(cfg["models"].get("lead_fallback", "sonnet"), cfg["models"].get("lead_fallback", "sonnet")),
+        "--effort",
+        cfg["models"].get("lead_effort", "high"),
+        "--append-system-prompt",
+        system,
+        "--permission-mode",
+        "dontAsk",
+        # team settings passed explicitly: flag settings don't depend on workspace trust
+        "--settings",
+        str(tdir / ".claude" / "settings.json"),
+        "--setting-sources",
+        "local",
+        "--agents",
+        agents_json(tdir),
+        "--strict-mcp-config",
+        "--disallowedTools",
+        "WebFetch,WebSearch",
+        "--session-id",
+        sid,
+        "--name",
+        f"agenthq-{team}-{today}",
+        "--output-format",
+        "json",
+    ]
     since = time.time()
-    env = {**os.environ,
-           "AGENTHQ_TEAM": team, "AGENTHQ_ALLOWANCE": str(allowance),
-           "AGENTHQ_SINCE": str(since), paths.HOME_ENV: str(HQ), "AGENTHQ_MODE": t.get("mode", "build"),
-           "AGENTHQ_PR_MODE": t.get("pr_mode", "none") if t.get("mode", "build") == "build" else "none",
-           "GIT_CEILING_DIRECTORIES": str(TEAMS)}
+    env = {
+        **os.environ,
+        "AGENTHQ_TEAM": team,
+        "AGENTHQ_ALLOWANCE": str(allowance),
+        "AGENTHQ_SINCE": str(since),
+        paths.HOME_ENV: str(HQ),
+        "AGENTHQ_MODE": t.get("mode", "build"),
+        "AGENTHQ_PR_MODE": t.get("pr_mode", "none") if t.get("mode", "build") == "build" else "none",
+        "GIT_CEILING_DIRECTORIES": str(TEAMS),
+    }
     for alias in ("opus", "sonnet", "haiku"):  # subagents use short names → pin versions
         if ids.get(alias):
             env[f"ANTHROPIC_DEFAULT_{alias.upper()}_MODEL"] = ids[alias]
@@ -338,10 +411,13 @@ def run_team(team: str, cfg: dict, allowance: int, today: str, dry: bool) -> dic
     log(f"{team}: starting (allowance {allowance:,}, session {sid})")
     STATE.mkdir(exist_ok=True)
     current = STATE / "current.json"  # read by the Control Room
-    current.write_text(json.dumps({"team": team, "session": sid, "since": since, "allowance": allowance}), encoding="utf-8")
+    current.write_text(
+        json.dumps({"team": team, "session": sid, "since": since, "allowance": allowance}), encoding="utf-8"
+    )
     try:
-        r = subprocess.run(cmd, cwd=tdir, env=env, capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=4 * 3600)
+        r = subprocess.run(
+            cmd, cwd=tdir, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=4 * 3600
+        )
         out, rc = r.stdout, r.returncode
     except subprocess.TimeoutExpired as e:
         out, rc = (e.stdout or "") if isinstance(e.stdout, str) else "", -1
@@ -368,17 +444,21 @@ def run_team(team: str, cfg: dict, allowance: int, today: str, dry: bool) -> dic
         dirty = git(repo, "status", "--porcelain", check=False)
         if dirty:  # leave a handoff note so the next run reviews the half-done work
             with open(tdir / "STATE.md", "a", encoding="utf-8") as f:
-                f.write(f"\n\n## ⚠️ Unfinished work from the {today} run (stopped by budget)\n"
-                        "These changes in repo/ were NOT committed. First thing next run: have tester + "
-                        "qa review them, then commit or discard.\n```\n" + dirty + "\n```\n")
+                f.write(
+                    f"\n\n## ⚠️ Unfinished work from the {today} run (stopped by budget)\n"
+                    "These changes in repo/ were NOT committed. First thing next run: have tester + "
+                    "qa review them, then commit or discard.\n```\n" + dirty + "\n```\n"
+                )
     result["used"] = meter.team_used_since(team, dt.datetime.fromtimestamp(since).astimezone(), cfg)
     result["commits"] = git(repo, "log", "--branches", "--oneline", f"--since=@{int(since)}", check=False)
     result["prs"] = prs_since(t, since)
     report = tdir / "reports" / f"{today}.md"
     if not report.exists():
-        report.write_text(f"# {team} — {today}\n\nThe run ended without a report "
-                          f"(status: {result['status']}).\n\nCommits:\n```\n{result['commits'] or 'none'}\n```\n",
-                          encoding="utf-8")
+        report.write_text(
+            f"# {team} — {today}\n\nThe run ended without a report "
+            f"(status: {result['status']}).\n\nCommits:\n```\n{result['commits'] or 'none'}\n```\n",
+            encoding="utf-8",
+        )
     log(f"{team}: {result['status']}, used {result['used']:,} / {allowance:,}")
     return result
 
@@ -391,9 +471,25 @@ def open_prs(t: dict) -> list[dict]:
     slug = gh_slug(t)
     if not slug or t.get("pr_mode", "none") == "none":
         return []
-    r = subprocess.run(["gh", "pr", "list", "--repo", slug, "--state", "open", "--limit", "50", "--json",
-                        "number,title,url,isDraft,headRefName,createdAt,reviewDecision"],
-                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    r = subprocess.run(
+        [
+            "gh",
+            "pr",
+            "list",
+            "--repo",
+            slug,
+            "--state",
+            "open",
+            "--limit",
+            "50",
+            "--json",
+            "number,title,url,isDraft,headRefName,createdAt,reviewDecision",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     try:
         prs = json.loads(r.stdout or "[]")
     except ValueError:
@@ -402,14 +498,25 @@ def open_prs(t: dict) -> list[dict]:
 
 
 def prs_since(t: dict, since: float) -> list[dict]:
-    cutoff = dt.datetime.fromtimestamp(since, dt.timezone.utc)
-    return [p for p in open_prs(t)
-            if dt.datetime.fromisoformat(p["createdAt"].replace("Z", "+00:00")) >= cutoff]
+    cutoff = dt.datetime.fromtimestamp(since, dt.UTC)
+    return [p for p in open_prs(t) if dt.datetime.fromisoformat(p["createdAt"].replace("Z", "+00:00")) >= cutoff]
 
 
 def notify(title: str, body: str, url: str, url2: str = "") -> None:
-    args = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(paths.RUNNER / "notify.ps1"),
-            "-Title", title, "-Body", body, "-Url", url]
+    args = [
+        "powershell",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(paths.RUNNER / "notify.ps1"),
+        "-Title",
+        title,
+        "-Body",
+        body,
+        "-Url",
+        url,
+    ]
     if url2:
         args += ["-Url2", url2]
     subprocess.run(args, capture_output=True)
@@ -418,6 +525,7 @@ def notify(title: str, body: str, url: str, url2: str = "") -> None:
 def wait_for_network(max_wait: int = 180) -> bool:
     """Right after logon/wake Wi-Fi may not be up yet: poll the API host for up to 3 min."""
     import socket
+
     deadline = time.time() + max_wait
     while True:
         try:
@@ -445,8 +553,10 @@ def cmd_run(args, cfg: dict) -> None:
         return
     bad = parent_git_repo()
     if bad is not None:
-        log(f"REFUSING TO RUN: {bad} is a git repository, so Claude Code would treat it as the "
-            f"agents' project. Move the home folder outside it, or rename {bad / '.git'}.")
+        log(
+            f"REFUSING TO RUN: {bad} is a git repository, so Claude Code would treat it as the "
+            f"agents' project. Move the home folder outside it, or rename {bad / '.git'}."
+        )
         return
     if not args.force and dt.datetime.now().hour < cfg["schedule"].get("start_hour", 0):
         log("Too early (start_hour): no run yet.")
@@ -475,8 +585,10 @@ def cmd_run(args, cfg: dict) -> None:
         if args.extra:
             pool += args.extra
             log(f"King's one-off extra budget: +{args.extra:,} tokens")
-        log(f"Pool today: {pool:,} tokens for {teams} (agents week {s['week']['agents']:,}, "
-            f"personal week {s['week']['personal']:,})")
+        log(
+            f"Pool today: {pool:,} tokens for {teams} (agents week {s['week']['agents']:,}, "
+            f"personal week {s['week']['personal']:,})"
+        )
         results = []
         for i, team in enumerate(teams):
             remaining_w = sum(cfg["teams"][x].get("weight", 1.0) for x in teams[i:])
@@ -504,12 +616,17 @@ def cmd_run(args, cfg: dict) -> None:
         if not args.dry_run:
             (STATE / f"run-{today}.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
             brief = write_brief(today, cfg)
-            pulls = (f"https://github.com/pulls?q=is%3Aopen+is%3Apr+author%3A{owner(cfg)}+archived%3Afalse"
-                     if owner(cfg) else "https://github.com/pulls")
+            pulls = (
+                f"https://github.com/pulls?q=is%3Aopen+is%3Apr+author%3A{owner(cfg)}+archived%3Afalse"
+                if owner(cfg)
+                else "https://github.com/pulls"
+            )
             new_prs = [p for r in results for p in r.get("prs", [])]
             ready = [p for p in new_prs if not p.get("isDraft")]
             if new_prs:
-                title = f"{NAME}: {len(ready)} PR(s) ready for review" + (f", {len(new_prs) - len(ready)} draft" if len(ready) < len(new_prs) else "")
+                title = f"{NAME}: {len(ready)} PR(s) ready for review" + (
+                    f", {len(new_prs) - len(ready)} draft" if len(ready) < len(new_prs) else ""
+                )
                 body = "\n".join(f"#{p['number']} {p['title']}" for p in new_prs[:4])
                 url = new_prs[0]["url"] if len(new_prs) == 1 else pulls
             else:
@@ -523,6 +640,7 @@ def cmd_run(args, cfg: dict) -> None:
 
 # ───────────────────────────── brief ─────────────────────────────
 
+
 def write_brief(day: str, cfg: dict) -> Path:
     REPORTS.mkdir(exist_ok=True)
     runs = []
@@ -531,22 +649,31 @@ def write_brief(day: str, cfg: dict) -> Path:
         runs = json.loads(f.read_text(encoding="utf-8"))
     s = meter.summary(cfg, days=7)
     b = cfg["budget"]
-    lines = [f"# 👑 Daily brief — {day}", "",
-             "## Budget",
-             f"- You today: **{fmt(s['today']['personal'])}** · you this week: {fmt(s['week']['personal'])}",
-             f"- Agents today: **{fmt(s['today']['agents'])}** / {fmt(b['agents_daily'])} · "
-             f"agents this week: {fmt(s['week']['agents'])} / {fmt(b['agents_weekly'])}", "",
-             "| Team | Status | Used / allowance | New commits | New PRs |", "|---|---|---|---|---|"]
+    lines = [
+        f"# 👑 Daily brief — {day}",
+        "",
+        "## Budget",
+        f"- You today: **{fmt(s['today']['personal'])}** · you this week: {fmt(s['week']['personal'])}",
+        f"- Agents today: **{fmt(s['today']['agents'])}** / {fmt(b['agents_daily'])} · "
+        f"agents this week: {fmt(s['week']['agents'])} / {fmt(b['agents_weekly'])}",
+        "",
+        "| Team | Status | Used / allowance | New commits | New PRs |",
+        "|---|---|---|---|---|",
+    ]
     for r in runs:
         n = len([c for c in (r.get("commits") or "").splitlines() if c.strip()])
-        lines.append(f"| {r['team']} | {r['status']} | {fmt(r.get('used', 0))} / {fmt(r.get('allowance', 0))} "
-                     f"| {n} | {len(r.get('prs', []))} |")
+        lines.append(
+            f"| {r['team']} | {r['status']} | {fmt(r.get('used', 0))} / {fmt(r.get('allowance', 0))} "
+            f"| {n} | {len(r.get('prs', []))} |"
+        )
     waiting = []
     for team, t in cfg["teams"].items():
         for p in open_prs(t):
             state = "draft" if p.get("isDraft") else (p.get("reviewDecision") or "ready").lower()
-            waiting.append(f"- **{team}** [#{p['number']} {p['title']}]({p['url']}) · {state} · "
-                           f"try it: `king demo {team} {p['number']}`")
+            waiting.append(
+                f"- **{team}** [#{p['number']} {p['title']}]({p['url']}) · {state} · "
+                f"try it: `king demo {team} {p['number']}`"
+            )
     if waiting:
         lines += ["", "## 🔀 Pull requests waiting for you", *waiting]
     questions = []
@@ -577,6 +704,7 @@ def cmd_demo(args, cfg: dict) -> None:
     """Run a PR (or branch) of a project locally, in its own copy, and open it in the browser."""
     import urllib.request
     import webbrowser
+
     team = args.team
     if team not in cfg["teams"]:
         sys.exit(f"Unknown team '{team}'. Teams: {', '.join(cfg['teams'])}")
@@ -588,8 +716,13 @@ def cmd_demo(args, cfg: dict) -> None:
         sys.exit(f"{team} has no runnable demo yet (teams/{team}/demo.json). {demo.get('note', '')}")
     target = args.target or default_branch(repo)
     if target.isdigit():
-        r = subprocess.run(["gh", "pr", "view", target, "--repo", gh_slug(t), "--json", "headRefName"],
-                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        r = subprocess.run(
+            ["gh", "pr", "view", target, "--repo", gh_slug(t), "--json", "headRefName"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
         if r.returncode != 0:
             sys.exit(f"PR #{target} not found in {gh_slug(t)}")
         branch = json.loads(r.stdout)["headRefName"]
@@ -617,8 +750,12 @@ def cmd_demo(args, cfg: dict) -> None:
         subprocess.run(demo["install"], cwd=cwd, shell=True)
     print(f"  starting:   {demo['run']}  (in a new window; close it to stop)")
     # own console window, detached from this terminal's pipes (closing it stops the app)
-    subprocess.Popen(["cmd", "/k", f"title {team} demo - {branch} & {demo['run']}"], cwd=cwd,
-                     creationflags=subprocess.CREATE_NEW_CONSOLE, close_fds=True)
+    subprocess.Popen(
+        ["cmd", "/k", f"title {team} demo - {branch} & {demo['run']}"],
+        cwd=cwd,
+        creationflags=subprocess.CREATE_NEW_CONSOLE,
+        close_fds=True,
+    )
     url = demo["url"]
     for _ in range(90):
         try:
@@ -635,6 +772,7 @@ def cmd_demo(args, cfg: dict) -> None:
 
 
 # ───────────────────────────── status ─────────────────────────────
+
 
 def cmd_status(cfg: dict) -> None:
     pool, s = pool_today(cfg)
@@ -686,7 +824,9 @@ def main() -> None:
     if args.cmd == "prs":
         for team, t in meter.load_config()["teams"].items():
             for pr in open_prs(t):
-                print(f"{team:<22}#{pr['number']:<4}{'draft ' if pr['isDraft'] else 'ready '}{pr['title']}\n{'':<26}{pr['url']}")
+                print(
+                    f"{team:<22}#{pr['number']:<4}{'draft ' if pr['isDraft'] else 'ready '}{pr['title']}\n{'':<26}{pr['url']}"
+                )
         return
     cfg = meter.load_config()
     if args.cmd == "status":

@@ -5,10 +5,10 @@
 Only http://localhost / 127.0.0.1 URLs are allowed, and the image must be written inside the
 current folder (the team workspace).
 """
+
 from __future__ import annotations
 
 import argparse
-import os
 import shutil
 import subprocess
 import sys
@@ -36,14 +36,15 @@ def browser() -> str:
 
 def _serve(folder: str):
     """Serve `folder` on 127.0.0.1 (random free port) from a background thread."""
-    import functools, http.server, threading
+    import functools
+    import http.server
+    import threading
 
     class Quiet(http.server.SimpleHTTPRequestHandler):
         def log_message(self, *args):
             pass
 
-    httpd = http.server.ThreadingHTTPServer(
-        ("127.0.0.1", 0), functools.partial(Quiet, directory=folder))
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=folder))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd
 
@@ -78,15 +79,27 @@ def main() -> None:
         frame.write_text(
             "<!doctype html><html><body style='margin:0;overflow:hidden;background:#fff'>"
             f"<iframe src='{a.url}' style='border:0;width:{w}px;height:{h}px;display:block'></iframe>"
-            "</body></html>", encoding="utf-8")
+            "</body></html>",
+            encoding="utf-8",
+        )
         # Served over http, not file://: from a file:// wrapper, --virtual-time-budget doesn't
         # cover the iframe, so pages that render after load came out blank.
         server = _serve(profile)
         target = f"http://127.0.0.1:{server.server_address[1]}/frame.html"
-    cmd = [browser(), "--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run",
-           "--disable-extensions", f"--user-data-dir={profile}",
-           f"--window-size={w},{h}", f"--force-device-scale-factor={a.scale}",
-           f"--virtual-time-budget={a.wait}", f"--screenshot={out}", target]
+    cmd = [
+        browser(),
+        "--headless=new",
+        "--disable-gpu",
+        "--hide-scrollbars",
+        "--no-first-run",
+        "--disable-extensions",
+        f"--user-data-dir={profile}",
+        f"--window-size={w},{h}",
+        f"--force-device-scale-factor={a.scale}",
+        f"--virtual-time-budget={a.wait}",
+        f"--screenshot={out}",
+        target,
+    ]
     subprocess.run(cmd, capture_output=True, timeout=120)
     # On Windows the Edge launcher returns before the browser has written the file: wait for it.
     deadline = time.time() + 60

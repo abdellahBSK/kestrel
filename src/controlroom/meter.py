@@ -4,6 +4,7 @@ Every API response in those logs carries a `usage` block. Sessions run by agent 
 live under project folders named after `<home>/teams/<team>`; everything else is
 the owner's personal usage.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -39,7 +40,7 @@ def owner_of(project_dir_name: str) -> str:
     prefix = teams_prefix()
     if not low.startswith(prefix):
         return "personal"
-    return "team:" + low[len(prefix):]
+    return "team:" + low[len(prefix) :]
 
 
 _CFG: dict | None = None
