@@ -91,6 +91,21 @@ export type Overview = {
   schedule: Record<string, string[]>;
   today: string;
   teams: Team[];
+  /** What needs the owner now, most urgent first (src/kestrel/alerts.py). */
+  alerts: Alert[];
+};
+
+export type Alert = {
+  id: string;
+  kind: "stuck" | "lost" | "failed" | "budget" | "cap" | "ask" | "pr";
+  level: "critical" | "warning" | "info";
+  /** "*" for alerts about every project (the daily budget). */
+  project: string;
+  run: string | null;
+  agent: string | null;
+  title: string;
+  detail: string;
+  ts: string | null;
 };
 
 export type FeedEvent = {

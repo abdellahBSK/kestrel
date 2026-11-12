@@ -24,7 +24,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from kestrel import NAME, __version__, control, meter, paths
+from kestrel import NAME, __version__, alerts, control, meter, paths
 from kestrel.adapters import claude_code
 from kestrel.api import ingest
 from kestrel.core import cost, runs, status
@@ -344,6 +344,8 @@ def overview() -> dict:
     declared = list(c["teams"]) + [p for p in c.get("projects", {}) if p not in c["teams"]]
     names = declared + [p for p in st.projects() if p not in declared]
     teams, live_runs, lost_run = [], [], None
+    found: list[dict] = []  # alerts
+    now = time.time()
     for name in names:
         t = c["teams"].get(name) or c.get("projects", {}).get(name) or {}
         latest = (st.runs(name, 1) or [None])[0]
@@ -400,6 +402,20 @@ def overview() -> dict:
                 "previews": previews(name) if name in c["teams"] else [],
             }
         )
+        day0 = control.day_start(now)
+        caps = [
+            x for x in st.controls_for(name) if x["source"] == "budget" and x["project"] == name and x["ts"] >= day0
+        ]
+        found += alerts.for_project(
+            name,
+            f,
+            latest["id"] if latest else None,
+            now=now,
+            prs=teams[-1]["prs"],
+            questions=teams[-1]["questions"],
+            caps=caps,
+        )
+    found += alerts.for_budget(u["today"], b["agents_daily"], b.get("warn_at", 0.8), dt.date.today().isoformat(), now)
     return {
         "generated_at": iso(time.time()),
         "utc_offset_min": round(dt.datetime.now().astimezone().utcoffset().total_seconds() / 60),
@@ -428,6 +444,7 @@ def overview() -> dict:
         "schedule": {d: c["schedule"].get(d, []) for d in orchestrator.DAYS},
         "today": today,
         "teams": teams,
+        "alerts": [{**a, "ts": iso(a["ts"])} for a in alerts.ordered(found)],
     }
 
 
@@ -658,10 +675,24 @@ def serve(open_browser: bool = True, port: int = PORT, host: str | None = None) 
         import webbrowser
 
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
+    notifier = None
+    if not DEMO:  # fake projects must never reach your desktop or your team's chat
+        notifier = alerts.Notifier(
+            current=lambda: overview()["alerts"],
+            cfg=cfg,
+            state=paths.HOME / "data" / "alerts-sent.json",
+            name=NAME,
+            dashboard=url,
+            notify=lambda title, body, link: system.notify(title, body, link, runner_dir=paths.RUNNER),
+        )
+        threading.Thread(target=notifier.run, name="kestrel-alerts", daemon=True).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        if notifier:
+            notifier.stop.set()
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import { action, type Overview } from "@/lib/api";
 import { clock, duration } from "@/lib/format";
 import { HEALTH } from "@/lib/health";
 import { href, type Route } from "@/lib/router";
+import { AlertsMenu } from "./AlertsMenu";
 import { Button } from "./ui/button";
 import { ConfirmDialog } from "./ui/overlays";
 import { Kbd, StatusDot, Tooltip } from "./ui/primitives";
@@ -153,6 +154,7 @@ export function Topbar({
         <Button variant="ghost" size="icon" className="sm:hidden" onClick={onOpenSearch} aria-label="Search">
           <Search />
         </Button>
+        <AlertsMenu ov={ov} />
         {ov?.stop ? (
           <Button variant="primary" onClick={resume}>
             <Play />
@@ -170,7 +172,7 @@ export function Topbar({
         open={confirmStop}
         onOpenChange={setConfirmStop}
         title="Stop every agent?"
-        description="Running agents halt at their next action, and no new runs start until you resume. Work in progress is left uncommitted for the next run to review."
+        description="Every running agent, in every project, is refused its next action and ends. No new scheduled runs start until you resume; work in progress is left for the next run to review."
         confirm="Stop all agents"
         danger
         onConfirm={stop}
