@@ -1,6 +1,7 @@
 # Your own config and runtime data never belong in this repository.
 # (They normally live in ~/.kestrel; these patterns protect a home folder set to the checkout.)
 config.toml
+!src/kestrel/templates/config.toml
 teams/
 state/
 logs/

@@ -1,0 +1,107 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Kestrel configuration
+#
+#  Every active value below is Kestrel's built-in default: this file changes nothing until you
+#  edit it. Delete what you don't need; missing keys keep their defaults.
+#  Check it any time with:  kestrel doctor
+#  Reference:  https://github.com/abdellahBSK/kestrel/tree/main/docs
+# ─────────────────────────────────────────────────────────────────────────────
+
+[monitor]
+# How long the dashboard keeps believing something is alive without hearing from it (seconds).
+heartbeat_timeout = 45   # a run that sends nothing for this long is "lost"
+                         # (a run can ask for longer in its run.started event; Claude Code asks for 300)
+idle_after = 120         # an agent with no activity for this long is "idle"
+stale_after = 600        # ...and after this long "stale": it may be stuck
+
+[budget]
+# Token budget lines on the dashboard; the runner's hard limits. 0 = no budget.
+agents_daily = 0
+agents_weekly = 0
+# Agents get a "wrap up now" warning at this share of their allowance, and are stopped at this one.
+warn_at = 0.80
+stop_at = 1.00
+# How tokens are counted (1 = counts fully, 0 = ignored). Cache reads are cheap, so not counted.
+weight_input = 1.0
+weight_output = 1.0
+weight_cache_write = 1.0
+weight_cache_read = 0.0
+# Runner only: smaller allowances are skipped instead of wasted on half-finished work.
+min_team_run = 120_000
+# Runner only: when YOUR OWN Claude Code usage over 7 days goes above this, agents get half budget.
+# personal_week_high = 8_000_000
+
+[model_weights]
+# Count every model's tokens alike (1.0), or weight them by price to budget in
+# "Opus-equivalent" tokens. The first name contained in a model id wins: list versions first.
+# "opus-5-5" = 1.0
+# opus = 1.25
+# "sonnet-5" = 0.5
+# sonnet = 0.75
+# "haiku-5" = 0.025
+# haiku = 0.25
+default = 1.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Projects (optional): display names for projects that report events.
+#  A project appears on its own as soon as it sends an event; this only names it.
+# ─────────────────────────────────────────────────────────────────────────────
+# [projects.my-project]
+# title = "My project: what it does"
+# key = "MYP"
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  The runner (optional): scheduled teams of Claude Code agents working on your repositories.
+#  Guide: https://github.com/abdellahBSK/kestrel/blob/main/docs/runner.md
+#  Leave this commented out if you only want the dashboard.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[pipeline]
+# Testers wait for developers, and QA waits for both, so QA judges a finished, tested change.
+enforce_order = true
+# Keep "Co-Authored-By: Claude" and similar lines out of the agents' commits, PRs and files.
+# Off by default: agent work stays attributed. Check the policies of the repositories you work on.
+hide_ai_attribution = false
+
+[models]
+# Claude Code model names for each role. The lead plans and reviews: give it the strongest.
+lead = "opus"
+lead_effort = "high"        # low | medium | high | xhigh | max
+lead_fallback = "sonnet"    # used automatically when the lead model is unavailable
+developer = "sonnet"
+security = "sonnet"
+optimizer = "sonnet"
+tester = "haiku"
+qa = "haiku"
+
+# [model_ids]
+# Pin the short names to exact model versions.
+# opus = "claude-opus-5-5"
+# sonnet = "claude-sonnet-5-5"
+# haiku = "claude-haiku-5-5"
+
+# [owner]
+# Your GitHub account: repositories you own get an `agent` label on agent pull requests.
+# github = "your-github-name"
+
+# [schedule]
+# Teams that work each day, in order. The day's budget is split between them by weight.
+# mon = ["my-app"]
+# tue = []
+# wed = ["my-app"]
+# thu = []
+# fri = ["my-app"]
+# sat = []
+# sun = []
+# start_hour = 9   # don't start agents before this local hour (0-23)
+
+# [teams.my-app]
+# title = "My app: what it is"
+# repo = "https://github.com/your-github-name/my-app.git"   # or "" for a new local-only repository
+# key = "APP"            # 3-letter code for backlog IDs and branch names (APP-014)
+# mode = "build"         # build: writes code on task branches · advisory: audits and proposes only
+# pr_mode = "draft"      # ready: push and open PRs · draft: open draft PRs · none: push nothing
+# weight = 1.0           # share of the day's budget
+# enabled = true
+# specs = []             # files copied into the team's specs/ folder (read-only for agents)
+# focus = "Read the README and the code, then harden and extend it. Keep the tests green."
