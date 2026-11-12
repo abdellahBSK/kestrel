@@ -1,10 +1,13 @@
-"""The Control Room — a local live dashboard of the King's agent teams.
+"""The dashboard server.
 
   controlroom watch     → http://127.0.0.1:7777 (opens your browser)
 
-Reads only local files (team folders, Claude Code session logs, state/) plus your own `gh`
-for PRs. Listens on 127.0.0.1 only. Buttons require a same-origin request with a custom
-header, so other websites can't trigger them.
+Everything it shows comes from the event store (store.py): events any agent reports through
+POST /v1/events, `controlroom emit` or the Python client, plus the Claude Code runner's teams,
+synced in by adapters/claude_code.py. It also reads team folders and your own `gh` for PRs.
+
+Listens on 127.0.0.1 only. Ingest needs the bearer token from <home>/ingest.token; dashboard
+buttons need a same-origin request with a custom header. No telemetry.
 """
 
 from __future__ import annotations
@@ -19,17 +22,18 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from controlroom import NAME, __version__, meter, paths, status
+from controlroom import NAME, __version__, ingest, meter, paths, runs, status
+from controlroom.adapters import claude_code
+from controlroom.events import EventError
 from controlroom.runner import orchestrator as kingdom
+from controlroom.store import open_store
 
 HQ = meter.HQ
 TEAMS = HQ / "teams"
 PORT = 7777
 HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
-ROLE_ORDER = ["lead", "developer", "tester", "qa", "security", "optimizer"]
 
 
 # ───────────────────────────── caching ─────────────────────────────
@@ -62,271 +66,125 @@ def cfg() -> dict:
     return CACHE.get("cfg", 5, meter.load_config)
 
 
-# ───────────────────────────── sessions ─────────────────────────────
+# ───────────────────────────── the store ─────────────────────────────
+
+DEMO = os.environ.get("CONTROLROOM_DEMO") == "1"  # demo mode: actions are disabled
 
 
-def sessions(team: str, limit: int = 12) -> list[dict]:
-    """Agent-team sessions for a team, newest first."""
-    out = []
-    for d in meter.team_dirs(team):
-        for f in d.glob("*.jsonl"):
-            out.append({"id": f.stem, "path": f, "mtime": f.stat().st_mtime})
-    out.sort(key=lambda s: s["mtime"], reverse=True)
-    return out[:limit]
+def iso(epoch: float | None) -> str | None:
+    """Every time the API returns is UTC; the browser formats it."""
+    return status.iso(epoch) if epoch is not None else None
 
 
-iso = status.iso  # every time the API returns is UTC; the browser formats it
+def store():
+    return open_store()
 
 
-def first_timestamp(path: Path) -> str | None:
-    """When a session started: the first timestamp in its transcript (cached: it never changes)."""
-
-    def read() -> str | None:
-        try:
-            with open(path, encoding="utf-8", errors="ignore") as f:
-                for i, line in enumerate(f):
-                    m = re.search(r'"timestamp"\s*:\s*"([^"]+)"', line)
-                    if m or i > 200:
-                        return m.group(1) if m else None
-        except OSError:
-            pass
-        return None
-
-    return CACHE.get(f"start:{path}", 86400, read)
+def sync() -> None:
+    """Pull the runner's Claude Code teams into the store (at most every 2 s)."""
+    c = cfg()
+    if c["teams"] and not DEMO:
+        CACHE.get("sync", 2, lambda: claude_code.sync(store(), c, HQ))
 
 
-def short(text: str, n: int = 140) -> str:
-    text = " ".join(str(text).split())
-    return text if len(text) <= n else text[: n - 1] + "…"
+def runner_run() -> dict | None:
+    """The scheduled runner's own run marker, live or lost (see status.run_state)."""
+    return CACHE.get("runner", 1, lambda: status.run_state(HQ / "state", status.thresholds(cfg())["heartbeat_timeout"]))
 
 
-def rel(path: str, team: str) -> str:
-    p = str(path).replace("\\", "/")
-    root = (TEAMS / team).as_posix()
-    i = p.lower().find(root.lower())
-    return p[i + len(root) + 1 :] if i != -1 else p
-
-
-def summarize(tool: str, inp: dict, team: str) -> str:
-    if tool in ("Bash", "PowerShell"):
-        return short(inp.get("command", ""), 160)
-    if tool in ("Read", "Write", "Edit", "MultiEdit", "NotebookEdit"):
-        return rel(inp.get("file_path") or inp.get("notebook_path") or "", team)
-    if tool in ("Grep", "Glob"):
-        return short(f"{inp.get('pattern', '')}  {rel(inp.get('path', ''), team)}".strip(), 120)
-    if tool in ("Agent", "Task"):
-        return f"→ {inp.get('subagent_type', '?')}: {short(inp.get('description', ''), 100)}"
-    if tool == "TodoWrite":
-        todos = inp.get("todos") or []
-        doing = [t.get("content") for t in todos if t.get("status") == "in_progress"]
-        return short("plan: " + (doing[0] if doing else f"{len(todos)} items"), 120)
-    return short(json.dumps(inp), 120)
-
-
-def result_text(content) -> str:
-    if isinstance(content, list):
-        return " ".join(c.get("text", "") for c in content if isinstance(c, dict))
-    return str(content or "")
-
-
-def parse_log(path: Path, agent: str, team: str) -> tuple[list[dict], dict]:
-    """Events and token usage from one transcript file."""
-    events, by_id = [], {}
-    usage, seen = {"tokens": 0.0, "calls": 0}, set()
-    last_turn: tuple = (None, None)
-    w = cfg()["budget"]
-    try:
-        lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
-    except OSError:
-        return [], usage
-    for line in lines:
-        try:
-            d = json.loads(line)
-        except ValueError:
-            continue
-        ts = d.get("timestamp")
-        typ = d.get("type")
-        msg = d.get("message") if isinstance(d.get("message"), dict) else {}
-        if typ in ("assistant", "user"):
-            last_turn = (typ, msg.get("stop_reason"))
-        if typ == "assistant":
-            u = msg.get("usage")
-            key = (msg.get("id"), d.get("requestId"))
-            if u and key not in seen:
-                seen.add(key)
-                f = meter.model_factor(msg.get("model", ""))
-                usage["tokens"] += f * (
-                    (u.get("input_tokens") or 0) * w.get("weight_input", 1)
-                    + (u.get("output_tokens") or 0) * w.get("weight_output", 1)
-                    + (u.get("cache_creation_input_tokens") or 0) * w.get("weight_cache_write", 1)
-                    + (u.get("cache_read_input_tokens") or 0) * w.get("weight_cache_read", 0)
-                )
-                usage["calls"] += 1
-                usage["model"] = msg.get("model", usage.get("model"))
-            for c in msg.get("content") or []:
-                if not isinstance(c, dict):
-                    continue
-                if c.get("type") == "text" and c.get("text", "").strip():
-                    events.append({"ts": ts, "agent": agent, "kind": "say", "text": short(c["text"], 300)})
-                elif c.get("type") == "tool_use":
-                    ev = {
-                        "ts": ts,
-                        "agent": agent,
-                        "kind": "tool",
-                        "tool": c.get("name"),
-                        "text": summarize(c.get("name", ""), c.get("input") or {}, team),
-                        "status": "running",
-                    }
-                    if c.get("name") in ("Agent", "Task"):
-                        ev["kind"] = "delegate"
-                    by_id[c.get("id")] = ev
-                    events.append(ev)
-        elif typ == "user":
-            for c in msg.get("content") or [] if isinstance(msg.get("content"), list) else []:
-                if isinstance(c, dict) and c.get("type") == "tool_result":
-                    ev = by_id.get(c.get("tool_use_id"))
-                    if not ev:
-                        continue
-                    txt = result_text(c.get("content"))
-                    if "[Kingdom guard]" in txt:
-                        ev["status"], ev["result"] = "blocked", short(txt.split("[Kingdom guard]", 1)[1], 200)
-                    elif c.get("is_error"):
-                        ev["status"], ev["result"] = "error", short(txt, 200)
-                    else:
-                        ev["status"], ev["result"] = "ok", short(txt[-220:], 220) if txt else ""
-        elif typ == "attachment":
-            a = d.get("attachment") or {}
-            if a.get("type") == "hook_success":
-                out = str(a.get("stdout", ""))
-                if "BUDGET WARNING" in out:
-                    if any(e["kind"] == "budget" for e in events):
-                        continue  # the hook repeats it after every action; show the first one only
-                    m = re.search(r"BUDGET WARNING: ([^.]*)", out)
-                    events.append(
-                        {
-                            "ts": ts,
-                            "agent": agent,
-                            "kind": "budget",
-                            "text": "Budget warning: " + (m.group(1) if m else "80% reached"),
-                        }
-                    )
-                elif "allowance exhausted" in out or "STOP flag" in out:
-                    events.append(
-                        {
-                            "ts": ts,
-                            "agent": agent,
-                            "kind": "halt",
-                            "text": "Stopped by the guard: "
-                            + ("token allowance exhausted" if "allowance" in out else "STOP flag"),
-                        }
-                    )
-    # A transcript that ends on the model's own final answer ended cleanly; one that ends mid-tool
-    # call was cut off.
-    usage["clean_end"] = last_turn == ("assistant", "end_turn")
-    return events, usage
-
-
-def run_now() -> dict | None:
-    """The runner's current run with state "running" or "lost" (see status.run_state), or None."""
-    return CACHE.get("run", 1, lambda: status.run_state(HQ / "state", status.thresholds(cfg())["heartbeat_timeout"]))
-
-
-def current_run() -> dict | None:
-    """The run in progress, only if it is really alive."""
-    run = run_now()
-    return run if run and run["state"] == "running" else None
-
-
-def results() -> dict[str, str]:
-    return CACHE.get("results", 10, lambda: status.run_results(HQ / "state"))
-
-
-def with_states(raw: list[dict], live: bool, failed: bool) -> list[dict]:
-    """Attach each agent's state. Subagents first: the lead is "waiting" while they work."""
-    th, now = status.thresholds(cfg()), time.time()
-
-    def public(a: dict, state: str) -> dict:
-        d = {k: v for k, v in a.items() if not k.startswith("_")}
-        return {**d, "state": state, "finished": state == "finished", "last_activity": iso(a["_mtime"])}
-
-    subs = [
-        public(a, status.agent_state(finished=a["_finished"], live=live, last_activity=a["_mtime"], now=now, th=th))
-        for a in raw[1:]
-    ]
-    lead = raw[0]
-    state = status.agent_state(
-        finished=False,
-        live=live,
-        last_activity=lead["_mtime"],
-        now=now,
-        th=th,
-        ended_cleanly=lead["_clean_end"],
-        waiting=any(x["state"] in ("working", "idle") for x in subs),
-        failed=failed,
+def weigh(model: str, d: dict) -> float:
+    """Tokens in the budget unit: per-type weights x the model's price relative to the reference model."""
+    b = cfg()["budget"]
+    return meter.model_factor(model or "") * (
+        d.get("input", 0) * b.get("weight_input", 1.0)
+        + d.get("output", 0) * b.get("weight_output", 1.0)
+        + d.get("cache_write", 0) * b.get("weight_cache_write", 1.0)
+        + d.get("cache_read", 0) * b.get("weight_cache_read", 0.0)
     )
-    return [public(lead, state), *subs]
 
 
-def session_detail(team: str, sid: str | None) -> dict:
-    ss = sessions(team)
-    s = next((x for x in ss if x["id"] == sid), ss[0] if ss else None)
-    if not s:
+def folded(project: str, run_id: str) -> dict:
+    """A run folded into run, agents and feed; cached until it changes (states refresh every 2 s)."""
+    st = store()
+    version = st.run_version(project, run_id)
+    th = status.thresholds(cfg())
+
+    def build() -> dict:
+        return runs.fold(
+            st.run_events(project, run_id),
+            heartbeat=st.heartbeat(project, run_id),
+            now=time.time(),
+            th=th,
+            weigh=weigh,
+        )
+
+    return CACHE.get(f"fold:{project}:{run_id}:{version}:{int(time.time() // 2)}", 2, build)
+
+
+def known(project: str) -> bool:
+    c = cfg()
+    return project in c["teams"] or project in c.get("projects", {}) or project in store().projects()
+
+
+def agent_public(a: dict) -> dict:
+    return {
+        "id": a["id"],
+        "role": a["role"],
+        "description": a["description"],
+        "parent": a["parent"],
+        "model": a["model"],
+        "tokens": int(a["tokens"]),
+        "raw_tokens": a["raw_tokens"],
+        "cost_usd": round(a["cost_usd"], 4),
+        "actions": a["actions"],
+        "errors": a["errors"],
+        "start": iso(a["first"]),
+        "end": iso(a["last"]),
+        "last_activity": iso(a["last"]),
+        "state": a["state"],
+        "finished": a["state"] == "finished",
+    }
+
+
+def feed_public(e: dict) -> dict:
+    out = {k: v for k, v in e.items() if k != "ts"}
+    out["ts"] = iso(e["ts"])
+    return out
+
+
+def run_public(f: dict) -> dict:
+    r = f["run"]
+    return {
+        "title": r["title"],
+        "source": r["source"],
+        "state": r["state"],
+        "status": r["status"],
+        "summary": r["summary"],
+        "error": r["error"],
+        "budget": r["budget"],
+        "tokens": r["tokens"],
+        "started_at": iso(r["started"]),
+        "last_activity": iso(r["last"]),
+    }
+
+
+def session_detail(team: str, run_id: str | None) -> dict:
+    sync()
+    rs = store().runs(team, 20)
+    if not rs:
         return {"team": team, "session": None, "live": False, "sessions": [], "events": [], "agents": []}
-    cur = current_run()
-    live = bool(cur and cur.get("session") == s["id"])
-
-    def build():
-        events, lead_usage = parse_log(s["path"], "lead", team)
-        lead_times = [e["ts"] for e in events if e.get("ts")]
-        agents = [
-            {
-                "role": "lead",
-                "description": "Team lead",
-                "tokens": int(lead_usage["tokens"]),
-                "actions": sum(e["kind"] in ("tool", "delegate") for e in events),
-                "model": lead_usage.get("model", ""),
-                "start": lead_times[0] if lead_times else None,
-                "end": lead_times[-1] if lead_times else None,
-                "_finished": False,
-                "_clean_end": lead_usage["clean_end"],
-                "_mtime": s["mtime"],
-            }
-        ]
-        subdir = s["path"].with_suffix("")
-        for f in sorted((subdir / "subagents").glob("*.jsonl")) if (subdir / "subagents").exists() else []:
-            meta = status.read_json(f.with_suffix(".meta.json")) or {}
-            role = meta.get("agentType", "subagent")
-            ev, us = parse_log(f, role, team)
-            events.extend(ev)
-            times = [e["ts"] for e in ev if e.get("ts")]
-            agents.append(
-                {
-                    "role": role,
-                    "description": meta.get("description", ""),
-                    "tokens": int(us["tokens"]),
-                    "actions": sum(e["kind"] == "tool" for e in ev),
-                    "model": us.get("model", ""),
-                    "start": min(times) if times else None,
-                    "end": max(times) if times else None,
-                    "_finished": bool(meta.get("finished")),
-                    "_clean_end": False,
-                    "_mtime": f.stat().st_mtime,
-                }
-            )
-        events.sort(key=lambda e: e.get("ts") or "")
-        return {"events": events[-600:], "agents": agents}
-
-    data = CACHE.get(f"sess:{s['id']}:{s['mtime']}", 2 if live else 300, build)
+    r = next((x for x in rs if x["id"] == run_id), rs[0])
+    f = folded(team, r["id"])
+    agents = sorted(f["agents"], key=lambda a: (a["parent"] is not None, a["first"]))
     return {
         "team": team,
-        "session": s["id"],
-        "live": live,
-        "started_at": first_timestamp(s["path"]),
-        "sessions": [
-            {"id": x["id"], "started_at": first_timestamp(x["path"]), "updated_at": iso(x["mtime"])} for x in ss
-        ],
-        "events": data["events"],
-        "agents": with_states(data["agents"], live, status.is_failure(results().get(s["id"]))),
+        "session": r["id"],
+        "live": f["run"]["live"],
+        "started_at": iso(r["started"]),
+        "run": run_public(f),
+        "sessions": [{"id": x["id"], "started_at": iso(x["started"]), "updated_at": iso(x["last"])} for x in rs],
+        "events": [feed_public(e) for e in f["feed"]],
+        "agents": [agent_public(a) for a in agents],
     }
 
 
@@ -344,9 +202,10 @@ def backlog_counts(team: str) -> dict:
 
 
 def questions(team: str) -> str:
-    reps = sorted((TEAMS / team / "reports").glob("20*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+    folder = TEAMS / team / "reports"
+    reps = sorted(folder.glob("20*.md"), key=lambda p: p.stat().st_mtime, reverse=True) if folder.is_dir() else []
     for rep in reps[:1]:
-        m = re.search(r"## Questions for the King\s*\n(.*?)(\n## |\Z)", rep.read_text(encoding="utf-8"), re.S)
+        m = re.search(r"## Questions for the (?:King|owner)\s*\n(.*?)(\n## |\Z)", rep.read_text(encoding="utf-8"), re.S)
         if m and m.group(1).strip() and not m.group(1).strip().lower().startswith("- none"):
             return m.group(1).strip()
     return ""
@@ -365,80 +224,154 @@ def prs_all() -> dict:
     return CACHE.get("prs", 90, fetch)
 
 
+def reported_prs(project: str) -> list[dict]:
+    """Pull requests reported through events (pr.opened / pr.closed), in the gh CLI's shape."""
+    return [
+        {
+            "number": p["number"],
+            "title": p.get("title", f"#{p['number']}"),
+            "url": p.get("url", ""),
+            "isDraft": p.get("draft", False),
+            "headRefName": p.get("branch", ""),
+            "createdAt": iso(p["ts"]),
+            "reviewDecision": "",
+        }
+        for p in store().pull_requests(project)
+    ]
+
+
 def previews(team: str) -> list[str]:
     d = TEAMS / team / "previews"
     files = sorted(d.glob("*.png"), key=lambda p: p.stat().st_mtime, reverse=True) if d.exists() else []
     return [f.name for f in files[:8]]
 
 
+def usage(c: dict) -> dict:
+    """Agent tokens from the store (any source) and your own Claude Code usage from its logs."""
+    today0 = meter.start_of_today()
+    days = [(today0 - dt.timedelta(days=i)).date().isoformat() for i in range(6, -1, -1)]
+    since = (today0 - dt.timedelta(days=6)).timestamp()
+    today = days[-1]
+    per_day = {d: 0.0 for d in days}
+    proj_today: dict[str, float] = {}
+    proj_week: dict[str, float] = {}
+    for project, ts, d in store().tokens_since(since):
+        day = dt.datetime.fromtimestamp(ts).astimezone().date().isoformat()
+        w = weigh(d.get("model", ""), d)
+        if day in per_day:
+            per_day[day] += w
+        proj_week[project] = proj_week.get(project, 0) + w
+        if day == today:
+            proj_today[project] = proj_today.get(project, 0) + w
+    mine = CACHE.get("personal", 20, lambda: meter.summary(c))
+    personal = {d["date"]: d["personal"] for d in mine["daily"]}
+    return {
+        "today": int(per_day[today]),
+        "week": int(sum(per_day.values())),
+        "proj_today": proj_today,
+        "proj_week": proj_week,
+        "you_today": mine["today"]["personal"],
+        "you_week": mine["week"]["personal"],
+        "daily": [{"date": d, "agents": int(per_day[d]), "personal": personal.get(d, 0)} for d in days],
+    }
+
+
+def last_action(f: dict) -> dict | None:
+    for e in reversed(f["feed"]):
+        if e["kind"] in ("tool", "delegate", "say"):
+            return {"agent": e["agent"], "text": e.get("title") or e["text"], "ts": iso(e["ts"])}
+    return None
+
+
 def overview() -> dict:
     c = cfg()
-    run = run_now()
-    cur = run if run and run["state"] == "running" else None
-    pool, s = CACHE.get("budget", 20, lambda: kingdom.pool_today(c))
+    sync()
+    st = store()
+    runner = runner_run()
+    u = usage(c)
+    b = c["budget"]
+    if c["teams"]:
+        pool = CACHE.get("pool", 20, lambda: kingdom.pool_today(c))[0]
+    else:
+        caps = [x for x in (b["agents_daily"] - u["today"], b["agents_weekly"] - u["week"]) if b["agents_daily"]]
+        pool = max(0, min(caps)) if caps else 0
     today = kingdom.DAYS[dt.date.today().weekday()]
     prs = prs_all()
-    teams = []
-    for team, t in c["teams"].items():
-        ss = sessions(team, 1)
-        last = ss[0] if ss else None
-        running = bool(cur and cur.get("team") == team)
-        run_state = run["state"] if run and run.get("team") == team else None
-        det = session_detail(team, last["id"]) if last else None
-        health = status.team_health(run_state, bool(last), [a["state"] for a in det["agents"]] if det else [])
-        now = None
-        if running and det:
-            acts = [e for e in det["events"] if e["kind"] in ("tool", "delegate", "say")]
-            if acts:
-                now = {"agent": acts[-1]["agent"], "text": acts[-1]["text"], "ts": acts[-1]["ts"]}
-        used = 0
-        if running:
-            used = meter.team_used_since(team, dt.datetime.fromtimestamp(cur["since"]).astimezone(), c)
+    declared = list(c["teams"]) + [p for p in c.get("projects", {}) if p not in c["teams"]]
+    names = declared + [p for p in st.projects() if p not in declared]
+    teams, live_runs, lost_run = [], [], None
+    for name in names:
+        t = c["teams"].get(name) or c.get("projects", {}).get(name) or {}
+        latest = (st.runs(name, 1) or [None])[0]
+        f = folded(name, latest["id"]) if latest else None
+        r = f["run"] if f else None
+        running = bool(r and r["live"])
+        budget = (r["budget"] if r else 0) or (
+            runner.get("allowance", 0) if runner and latest and runner.get("session") == latest["id"] else 0
+        )
+        run_info = None
+        if r:
+            run_info = {
+                "team": name,
+                "session": latest["id"],
+                "since": r["started"],
+                "started_at": iso(r["started"]),
+                "allowance": budget,
+                "state": r["state"],
+                "last_heartbeat": r["heartbeat"] or r["last"],
+            }
+            if running:
+                live_runs.append(run_info)
+            elif r["state"] == "lost" and lost_run is None:
+                lost_run = run_info
         teams.append(
             {
-                "team": team,
-                "title": t.get("title", ""),
+                "team": name,
+                "title": t.get("title") or (r["title"] if r else ""),
                 "key": t.get("key", ""),
                 "mode": t.get("mode", "build"),
                 "pr_mode": t.get("pr_mode", "none"),
                 "enabled": t.get("enabled", True),
-                "scheduled_today": team in c["schedule"].get(today, []),
+                "runnable": name in c["teams"] and not DEMO,
+                "source": r["source"] if r else "",
+                "scheduled_today": name in c["schedule"].get(today, []),
                 "running": running,
-                "run_state": run_state,
-                "health": health,
-                "heartbeat_at": iso(run["last_heartbeat"]) if run_state else None,
-                "now": now,
-                "allowance": cur.get("allowance") if running else 0,
-                "used": used,
-                "started_at": det["started_at"] if det else None,
-                "last_run_at": iso(last["mtime"]) if last else None,
-                "today_tokens": s["today"].get(f"team:{team}", 0),
-                "week_tokens": s["week"].get(f"team:{team}", 0),
-                "backlog": backlog_counts(team),
-                "prs": prs.get(team, []),
-                "questions": questions(team),
-                "previews": previews(team),
+                "run_state": r["state"] if r and r["state"] != "finished" else None,
+                "health": runs.health(f),
+                "heartbeat_at": iso(r["heartbeat"] or r["last"]) if r and r["state"] != "finished" else None,
+                "now": last_action(f) if running else None,
+                "allowance": budget if running else 0,
+                "used": r["tokens"] if running else 0,
+                "started_at": iso(r["started"]) if r else None,
+                "last_run_at": iso(r["last"]) if r else None,
+                "today_tokens": int(u["proj_today"].get(name, 0)),
+                "week_tokens": int(u["proj_week"].get(name, 0)),
+                "backlog": backlog_counts(name),
+                "prs": prs.get(name, []) or reported_prs(name),
+                "questions": questions(name),
+                "previews": previews(name) if name in c["teams"] else [],
             }
         )
-    b = c["budget"]
     return {
         "generated_at": iso(time.time()),
         "utc_offset_min": round(dt.datetime.now().astimezone().utcoffset().total_seconds() / 60),
         "name": NAME,
         "version": __version__,
+        "demo": DEMO,
         "stop": (HQ / "STOP").exists(),
-        "running": cur,
-        "lost_run": run if run and run["state"] == "lost" else None,
+        "running": live_runs[0] if live_runs else None,
+        "live_runs": live_runs,
+        "lost_run": lost_run,
         "budget": {
-            "agents_today": s["today"]["agents"],
+            "agents_today": u["today"],
             "agents_daily": b["agents_daily"],
-            "agents_week": s["week"]["agents"],
+            "agents_week": u["week"],
             "agents_weekly": b["agents_weekly"],
-            "you_today": s["today"]["personal"],
-            "you_week": s["week"]["personal"],
+            "you_today": u["you_today"],
+            "you_week": u["you_week"],
             "pool": pool,
             "warn_at": b.get("warn_at", 0.8),
-            "daily": s["daily"],
+            "daily": u["daily"],
         },
         "schedule": {d: c["schedule"].get(d, []) for d in kingdom.DAYS},
         "today": today,
@@ -470,6 +403,8 @@ def spawn(args: list[str], window: bool) -> None:
 
 def act(path: str, q: dict) -> dict:
     c = cfg()
+    if DEMO:
+        return {"ok": False, "msg": "Demo mode: buttons are disabled, nothing real is running."}
     if path == "/api/stop":
         (HQ / "STOP").write_text("Raised from the Control Room\n")
         kingdom.log("STOP flag raised from the Control Room.")
@@ -482,13 +417,14 @@ def act(path: str, q: dict) -> dict:
     if team not in c["teams"]:
         return {"ok": False, "msg": "unknown team"}
     if path == "/api/run":
-        if current_run():
+        run = runner_run()
+        if run and run["state"] == "running":
             return {"ok": False, "msg": "A run is already in progress."}
         spawn(["run", "--team", team, "--force"], window=False)
         return {"ok": True, "msg": f"{team} started. It will appear as running in a few seconds."}
     if path == "/api/demo":
         pr = (q.get("pr") or [""])[0]
-        spawn(["demo", team] + ([pr] if pr.isdigit() else []), window=True)
+        spawn(["launch", team] + ([pr] if pr.isdigit() else []), window=True)
         return {"ok": True, "msg": f"Demo of {team}{' #' + pr if pr else ''} starting in a new window."}
     return {"ok": False, "msg": "unknown action"}
 
@@ -565,10 +501,12 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, f.read_bytes(), ASSET_TYPES[m.group(3)], cache)
             if u.path == "/api/overview":
                 return self._json(overview())
+            if u.path == "/v1/health":
+                return self._json({"ok": True, "version": __version__, "events": "v1"})
             if u.path == "/api/session":
                 team = (q.get("team") or [""])[0]
-                if team not in cfg()["teams"]:
-                    return self._json({"error": "unknown team"}, 404)
+                if not team or not known(team):
+                    return self._json({"error": "unknown project"}, 404)
                 return self._json(session_detail(team, (q.get("id") or [None])[0]))
             m = re.match(r"^/previews/([a-z0-9-]+)/([A-Za-z0-9._-]+\.png)$", u.path)
             if m and m.group(1) in cfg()["teams"]:
@@ -579,7 +517,26 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # keep serving
             return self._json({"error": f"{type(e).__name__}: {e}"}, 500)
 
+    def _ingest(self):
+        """POST /v1/events: events from agents and adapters (see docs/events.md)."""
+        if not ingest.authorized(self.headers.get("Authorization")):
+            return self._json({"error": "missing or wrong bearer token (see `controlroom token`)"}, 401)
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > ingest.MAX_BODY:
+            return self._json({"error": f"body larger than {ingest.MAX_BODY // 1_000_000} MB"}, 413)
+        try:
+            raw = ingest.parse_body(self.rfile.read(length), self.headers.get("Content-Type", "application/json"))
+            result = ingest.ingest(store(), raw)
+        except (EventError, UnicodeDecodeError) as e:
+            return self._json({"error": str(e)}, 400)
+        code = 400 if result["rejected"] and not (result["accepted"] or result["duplicates"]) else 200
+        return self._json(result, code)
+
     def do_POST(self):
+        if not self._ok_host():
+            return self._send(403, b"forbidden", "text/plain")
+        if urlparse(self.path).path == "/v1/events":
+            return self._ingest()
         origin = self.headers.get("Origin", "")
         if (
             not self._ok_host()

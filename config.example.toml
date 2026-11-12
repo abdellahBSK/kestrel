@@ -80,7 +80,15 @@ haiku = 0.25
 default = 1.0
 
 # ─────────────────────────────────────────────────────────────
-#  TEAMS: one per project.
+#  PROJECTS (optional): display names for projects that report events.
+#  Any project that sends events shows up on its own; this only names it.
+# ─────────────────────────────────────────────────────────────
+# [projects.my-project]
+# title = "My project: what it is"
+# key = "MYP"
+
+# ─────────────────────────────────────────────────────────────
+#  TEAMS (optional): projects the Claude Code runner works on, one team each.
 #  repo     = GitHub URL to clone, or "" for a new local-only repository
 #  mode     = "build"    → the team writes code on task branches
 #             "advisory" → the team only audits and writes proposals (read-only)

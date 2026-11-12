@@ -20,6 +20,8 @@ shutil.copyfile(ROOT / "config.example.toml", _HOME / "config.toml")
 os.environ["CONTROLROOM_HOME"] = str(_HOME)
 
 from controlroom import meter  # noqa: E402
+from controlroom import store as store_module  # noqa: E402
+from controlroom.adapters import claude_code  # noqa: E402
 
 
 @pytest.fixture
@@ -34,6 +36,15 @@ def fake_claude_projects(tmp_path, monkeypatch) -> Path:
     projects.mkdir()
     monkeypatch.setattr(meter, "PROJECTS", projects)
     return projects
+
+
+@pytest.fixture(autouse=True)
+def fresh_store(tmp_path, monkeypatch):
+    """Every test gets its own empty event store."""
+    monkeypatch.setattr(store_module, "DEFAULT_PATH", tmp_path / "events.db")
+    claude_code._SEEN.clear()
+    yield store_module.open_store()
+    claude_code._SEEN.clear()
 
 
 def write_transcript(path: Path, records: list[dict]) -> Path:

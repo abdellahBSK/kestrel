@@ -20,9 +20,57 @@ HQ = paths.HOME
 PROJECTS = Path.home() / ".claude" / "projects"
 
 
+CONFIG_DEFAULTS: dict = {
+    "owner": {},
+    # 0 = no cap. The dashboard hides meters for uncapped budgets; the runner needs real caps.
+    "budget": {
+        "agents_daily": 0,
+        "agents_weekly": 0,
+        "personal_week_high": 10**15,
+        "warn_at": 0.8,
+        "stop_at": 1.0,
+        "min_team_run": 120_000,
+        "weight_input": 1.0,
+        "weight_output": 1.0,
+        "weight_cache_write": 1.0,
+        "weight_cache_read": 0.0,
+    },
+    "schedule": {},
+    "models": {
+        "lead": "opus",
+        "lead_effort": "high",
+        "lead_fallback": "sonnet",
+        "developer": "sonnet",
+        "security": "sonnet",
+        "optimizer": "sonnet",
+        "tester": "haiku",
+        "qa": "haiku",
+    },
+    "model_ids": {},
+    "model_weights": {"default": 1.0},
+    "monitor": {},
+    "pipeline": {},
+    "teams": {},
+    "projects": {},  # display names for projects that report events: [projects.<name>] title, key
+}
+MERGED = ("budget", "models", "monitor", "pipeline", "owner")  # sections whose keys fill in one by one
+
+
 def load_config() -> dict:
-    with open(paths.CONFIG, "rb") as f:
-        return tomllib.load(f)
+    """The config, with defaults for anything missing. No config file at all is fine: the dashboard
+    then shows whatever projects report events, with no budgets or schedule."""
+    try:
+        with open(paths.CONFIG, "rb") as f:
+            user = tomllib.load(f)
+    except FileNotFoundError:
+        user = {}
+    cfg = {k: dict(v) if isinstance(v, dict) else v for k, v in CONFIG_DEFAULTS.items()}
+    for key, value in user.items():
+        if key in MERGED and isinstance(value, dict):
+            cfg[key] = {**cfg[key], **value}
+        else:
+            cfg[key] = value
+    return cfg
 
 
 def sanitize(path_or_name: str) -> str:

@@ -8,7 +8,8 @@ import urllib.request
 import pytest
 
 from conftest import usage_record, write_transcript
-from controlroom import NAME, server
+from controlroom import NAME, runs, server
+from controlroom.events import normalize
 
 
 @pytest.fixture
@@ -75,7 +76,7 @@ def test_unknown_team_and_preview_paths(base_url):
     assert e.value.code == 404
 
 
-def test_parse_log_builds_the_feed(tmp_path):
+def test_claude_code_transcripts_become_the_feed(tmp_path):
     ts = "2026-01-01T10:00:00.000Z"
     path = write_transcript(
         tmp_path / "s.jsonl",
@@ -114,12 +115,16 @@ def test_parse_log_builds_the_feed(tmp_path):
             },
         ],
     )
-    events, usage = server.parse_log(path, "lead", "sandbox")
-    assert [e["kind"] for e in events] == ["say", "tool", "tool", "delegate"]
-    assert events[1]["status"] == "ok" and events[1]["result"] == "12 passed"
-    assert events[2]["status"] == "blocked"
-    assert events[3]["status"] == "running" and events[3]["text"] == "→ tester: Run tests"
-    assert usage["tokens"] == 15 and usage["calls"] == 1
+    raw, info = server.claude_code.transcript_events(path, "sandbox", "s1", "lead", "/x/teams/sandbox")
+    th = {"heartbeat_timeout": 45, "idle_after": 120, "stale_after": 600}
+    rows = [(e["ts"], e["type"], e["agent"], e["data"]) for e in (normalize(r, now=2e9) for r in raw)]
+    f = runs.fold(rows, heartbeat=None, now=2e9, th=th)
+    feed = f["feed"]
+    assert [e["kind"] for e in feed] == ["say", "tool", "tool", "delegate"]
+    assert feed[1]["status"] == "ok" and feed[1]["result"] == "12 passed" and feed[1]["text"] == "npm test"
+    assert feed[2]["status"] == "blocked"
+    assert feed[3]["status"] == "running" and feed[3]["text"] == "→ tester: Run tests"
+    assert f["agents"][0]["tokens"] == 15 and info["clean_end"] is False
 
 
 @pytest.fixture
