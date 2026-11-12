@@ -67,8 +67,9 @@ function stripCd(cmd: string): string {
 export type Humanized = { title: string; detail?: string; raw?: string };
 
 export function humanize(e: FeedEvent): Humanized {
-  if (e.kind === "say") return { title: e.text };
+  if (e.kind === "say" || e.kind === "notice") return { title: e.text };
   if (e.kind === "budget" || e.kind === "halt") return { title: e.text };
+  if (e.title) return { title: e.title, detail: shortenPaths(e.text), raw: e.text };
   const t = e.text ?? "";
   const short = shortenPaths(t);
   switch (e.tool) {

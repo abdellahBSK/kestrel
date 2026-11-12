@@ -33,6 +33,9 @@ export type Team = {
   mode: "build" | "advisory";
   pr_mode: "ready" | "draft" | "none";
   enabled: boolean;
+  /** Configured for the scheduled runner (can be started from here); false for projects that only report events. */
+  runnable: boolean;
+  source: string;
   scheduled_today: boolean;
   running: boolean;
   run_state: "running" | "lost" | null;
@@ -58,8 +61,10 @@ export type Overview = {
   utc_offset_min: number;
   name: string;
   version: string;
+  demo: boolean;
   stop: boolean;
   running: Run | null;
+  live_runs: Run[];
   lost_run: Run | null;
   budget: {
     agents_today: number;
@@ -80,16 +85,23 @@ export type Overview = {
 export type FeedEvent = {
   ts: string | null;
   agent: string;
-  kind: "say" | "tool" | "delegate" | "budget" | "halt";
+  agent_id?: string;
+  kind: "say" | "tool" | "delegate" | "budget" | "halt" | "notice";
   tool?: string;
+  /** A human-readable summary sent by the reporter, if any; otherwise the UI derives one. */
+  title?: string | null;
   text: string;
   status?: "running" | "ok" | "error" | "blocked";
   result?: string;
 };
 
 export type Agent = {
+  id: string;
+  parent: string | null;
   role: string;
   description: string;
+  errors: number;
+  cost_usd: number;
   state: AgentState;
   finished: boolean;
   last_activity: string;
@@ -105,6 +117,16 @@ export type Session = {
   session: string | null;
   live: boolean;
   started_at?: string | null;
+  run?: {
+    title: string;
+    source: string;
+    state: "running" | "finished" | "lost";
+    status: "ok" | "failed" | "stopped" | "interrupted" | null;
+    summary: string;
+    error: string;
+    budget: number;
+    tokens: number;
+  };
   sessions: { id: string; started_at: string | null; updated_at: string }[];
   events: FeedEvent[];
   agents: Agent[];

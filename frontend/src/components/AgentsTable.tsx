@@ -35,6 +35,31 @@ export function AgentStateLabel({ a }: { a: Agent }) {
   );
 }
 
+/** Agents as a tree: each under the agent that started it, siblings in start order. */
+export function agentTree(agents: Agent[]): { a: Agent; depth: number }[] {
+  const ids = new Set(agents.map((a) => a.id));
+  const children = new Map<string | null, Agent[]>();
+  for (const a of agents) {
+    const parent = a.parent && ids.has(a.parent) && a.parent !== a.id ? a.parent : null;
+    children.set(parent, [...(children.get(parent) ?? []), a]);
+  }
+  const rows: { a: Agent; depth: number }[] = [];
+  const seen = new Set<string>();
+  const walk = (parent: string | null, depth: number) => {
+    const kids = [...(children.get(parent) ?? [])].sort((x, y) =>
+      (x.start ?? "").localeCompare(y.start ?? ""),
+    );
+    for (const a of kids) {
+      if (seen.has(a.id)) continue; // guards against parent cycles in reported data
+      seen.add(a.id);
+      rows.push({ a, depth });
+      walk(a.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+  return rows;
+}
+
 export function AgentsTable({ session }: { session: Session | undefined }) {
   const agents = session?.agents ?? [];
   if (!agents.length)
@@ -45,10 +70,8 @@ export function AgentsTable({ session }: { session: Session | undefined }) {
         </EmptyState>
       </Card>
     );
-  const [lead, ...rest] = agents;
-  const subs = [...rest].sort((a, b) => (a.start ?? "").localeCompare(b.start ?? ""));
   const maxTokens = Math.max(...agents.map((a) => a.tokens), 1);
-  const rows = [{ a: lead!, child: false }, ...subs.map((a) => ({ a, child: true }))];
+  const rows = agentTree(agents);
 
   return (
     <Card className="overflow-hidden">
@@ -65,13 +88,13 @@ export function AgentsTable({ session }: { session: Session | undefined }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ a, child }, i) => {
+            {rows.map(({ a, depth }, i) => {
               const ongoing = a.state === "working" || a.state === "waiting" || a.state === "idle";
               return (
                 <tr key={i} className="border-line hover:bg-surface-2/40 border-b last:border-0">
                   <td className="py-2.5 pr-3 pl-4">
-                    <div className={cn("flex items-center gap-2.5", child && "pl-5")}>
-                      {child && (
+                    <div className="flex items-center gap-2.5" style={{ paddingLeft: depth * 20 }}>
+                      {depth > 0 && (
                         <span className="relative -ml-5 h-5 w-3.5 shrink-0" aria-hidden>
                           <span className="border-line-strong absolute top-0 left-1.5 h-2.5 w-2 rounded-bl-md border-b border-l" />
                         </span>
@@ -86,7 +109,14 @@ export function AgentsTable({ session }: { session: Session | undefined }) {
                   <td className="text-ink-2 px-3 py-2.5 whitespace-nowrap">
                     {a.model ? shortModel(a.model) : "–"}
                   </td>
-                  <td className="text-ink-2 tabular px-3 py-2.5 text-right">{integer(a.actions)}</td>
+                  <td className="text-ink-2 tabular px-3 py-2.5 text-right whitespace-nowrap">
+                    {integer(a.actions)}
+                    {a.errors > 0 && (
+                      <Tooltip content={`${a.errors} action${a.errors > 1 ? "s" : ""} ended in an error`}>
+                        <span className="text-critical-ink ml-1.5 cursor-default">· {a.errors} failed</span>
+                      </Tooltip>
+                    )}
+                  </td>
                   <td className="text-ink-2 tabular px-3 py-2.5 whitespace-nowrap">
                     {a.start ? (
                       <>

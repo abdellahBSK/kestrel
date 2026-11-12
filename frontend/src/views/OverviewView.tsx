@@ -66,7 +66,11 @@ export function OverviewView({ ov }: { ov: Overview | undefined }) {
         <Kpi
           label="Agents today"
           value={tokens(b.agents_today)}
-          sub={`${percent(b.agents_today, b.agents_daily)} of the ${tokens(b.agents_daily)} daily budget`}
+          sub={
+            b.agents_daily
+              ? `${percent(b.agents_today, b.agents_daily)} of the ${tokens(b.agents_daily)} daily budget`
+              : "No daily budget set"
+          }
           meter={
             <Meter
               value={b.agents_today}
@@ -79,7 +83,11 @@ export function OverviewView({ ov }: { ov: Overview | undefined }) {
         <Kpi
           label="Agents, last 7 days"
           value={tokens(b.agents_week)}
-          sub={`${percent(b.agents_week, b.agents_weekly)} of the ${tokens(b.agents_weekly)} weekly budget`}
+          sub={
+            b.agents_weekly
+              ? `${percent(b.agents_week, b.agents_weekly)} of the ${tokens(b.agents_weekly)} weekly budget`
+              : "No weekly budget set"
+          }
           meter={
             <Meter
               value={b.agents_week}
@@ -89,12 +97,28 @@ export function OverviewView({ ov }: { ov: Overview | undefined }) {
             />
           }
         />
-        <Kpi label="Left for agents today" value={tokens(b.pool)} sub="After daily and weekly caps" />
-        <Kpi
-          label="Your usage today"
-          value={tokens(b.you_today)}
-          sub={`${tokens(b.you_week)} over the last 7 days`}
-        />
+        {b.agents_daily ? (
+          <Kpi label="Left for agents today" value={tokens(b.pool)} sub="After daily and weekly caps" />
+        ) : (
+          <Kpi
+            label="Projects"
+            value={String(ov.teams.length)}
+            sub={`${ov.teams.filter((t) => t.health !== "never").length} have reported a run`}
+          />
+        )}
+        {b.you_week > 0 ? (
+          <Kpi
+            label="Your usage today"
+            value={tokens(b.you_today)}
+            sub={`${tokens(b.you_week)} over the last 7 days`}
+          />
+        ) : (
+          <Kpi
+            label="Live runs"
+            value={String(ov.live_runs.length)}
+            sub={ov.live_runs.length ? ov.live_runs.map((r) => r.team).join(", ") : "Nothing running"}
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -193,7 +217,7 @@ export function OverviewView({ ov }: { ov: Overview | undefined }) {
                           <span className="text-ink font-medium group-hover:underline group-hover:underline-offset-2">
                             {t.team}
                           </span>
-                          <KeyBadge>{t.key}</KeyBadge>
+                          {t.key && <KeyBadge>{t.key}</KeyBadge>}
                           {t.mode === "advisory" && (
                             <span className="text-muted text-[11.5px]">advisory</span>
                           )}

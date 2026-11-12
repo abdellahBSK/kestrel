@@ -95,7 +95,9 @@ export function ProjectView({ ov, team, tab }: { ov: Overview | undefined; team:
   const actions = (s?.events ?? []).filter((e) => e.kind === "tool" || e.kind === "delegate").length;
   const isLatest = !sessionId || sessionId === s?.sessions[0]?.id;
   const current = s?.sessions.find((x) => x.id === s.session);
-  const blockedRun = !!ov.running || ov.stop;
+  // The scheduled runner runs one team at a time; other sources report runs on their own.
+  const runnerBusy = ov.live_runs.some((r) => ov.teams.find((x) => x.team === r.team)?.runnable);
+  const blockedRun = runnerBusy || ov.stop;
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-6 lg:px-8 lg:py-8">
@@ -103,13 +105,20 @@ export function ProjectView({ ov, team, tab }: { ov: Overview | undefined; team:
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-[22px] font-semibold tracking-tight">{t.team}</h1>
-            <KeyBadge>{t.key}</KeyBadge>
+            {t.key && <KeyBadge>{t.key}</KeyBadge>}
             {t.mode === "advisory" && <Badge tone="outline">Advisory · read-only</Badge>}
             {t.pr_mode === "draft" && <Badge tone="outline">Draft PRs</Badge>}
             {!t.enabled && <Badge tone="outline">Disabled</Badge>}
             {t.scheduled_today && <Badge>Scheduled today</Badge>}
           </div>
-          <p className="text-ink-2 mt-1 max-w-2xl text-[13.5px]">{t.title}</p>
+          {t.title && <p className="text-ink-2 mt-1 max-w-2xl text-[13.5px]">{t.title}</p>}
+          {s?.run?.title && s.run.title !== t.title && (
+            <p className="text-ink mt-1 text-[13px]">
+              <span className="text-muted">This run · </span>
+              {s.run.title}
+              {s.run.error && <span className="text-critical-ink"> · {s.run.error}</span>}
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -133,32 +142,36 @@ export function ProjectView({ ov, team, tab }: { ov: Overview | undefined; team:
               </MenuContent>
             </Menu>
           )}
-          <Button variant="primary" disabled={blockedRun} onClick={() => setConfirmRun(true)}>
-            <Play />
-            Run now
-          </Button>
-          <Menu>
-            <MenuTrigger asChild>
-              <Button variant="secondary" size="icon" aria-label="More actions">
-                <Ellipsis />
-              </Button>
-            </MenuTrigger>
-            <MenuContent>
-              <MenuItem
-                icon={<MonitorPlay />}
-                onSelect={() => doAction(`/api/demo?team=${encodeURIComponent(team)}&pr=`)}
-              >
-                Demo the default branch
-              </MenuItem>
-              <MenuSeparator />
-              <MenuItem
-                icon={<GitPullRequest />}
-                onSelect={() => navigate({ view: "project", team, tab: "prs" })}
-              >
-                Open pull requests
-              </MenuItem>
-            </MenuContent>
-          </Menu>
+          {t.runnable && (
+            <Button variant="primary" disabled={blockedRun} onClick={() => setConfirmRun(true)}>
+              <Play />
+              Run now
+            </Button>
+          )}
+          {t.runnable && (
+            <Menu>
+              <MenuTrigger asChild>
+                <Button variant="secondary" size="icon" aria-label="More actions">
+                  <Ellipsis />
+                </Button>
+              </MenuTrigger>
+              <MenuContent>
+                <MenuItem
+                  icon={<MonitorPlay />}
+                  onSelect={() => doAction(`/api/demo?team=${encodeURIComponent(team)}&pr=`)}
+                >
+                  Demo the default branch
+                </MenuItem>
+                <MenuSeparator />
+                <MenuItem
+                  icon={<GitPullRequest />}
+                  onSelect={() => navigate({ view: "project", team, tab: "prs" })}
+                >
+                  Open pull requests
+                </MenuItem>
+              </MenuContent>
+            </Menu>
+          )}
         </div>
       </div>
 

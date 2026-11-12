@@ -1,87 +1,138 @@
 # Control Room
 
-> **Work in progress.** The name, the event format and the install story are still changing.
-> Expect breaking changes until v0.1.0.
+**See what your AI agents are doing, what they cost, and when they get stuck — live, on your own machine.**
 
-A live dashboard, budget guard and scheduled runner for teams of AI coding agents.
+> **Pre-release.** The name and the install story are still changing. Expect breaking changes
+> until v0.1.0.
 
-Today it runs teams of [Claude Code](https://docs.claude.com/en/docs/claude-code) agents (a lead plus
-developer, tester, QA, security and optimizer subagents) on your projects within a daily token
-budget, and shows what every agent is doing in a local web dashboard. An agent-agnostic event
-format, so any agent or orchestrator can report into the dashboard, is on the roadmap.
+Control Room is a local dashboard for agent runs. Any agent, framework or orchestrator reports
+small JSON events (run started, agent spawned, tool call, tokens, heartbeat, finished, PR
+opened) and the dashboard shows every run live: which agents are working, waiting, idle or stuck,
+what each one did, what it cost in tokens, and which runs were lost or left work unfinished.
 
-## Quick start (development)
+It also ships an optional **scheduled runner** for teams of [Claude Code](https://docs.claude.com/en/docs/claude-code)
+agents (a lead plus developer, tester, QA, security and optimizer subagents) that work on your
+repositories within a daily token budget, behind a guard that enforces branch, path and budget
+rules.
 
-Requires Python 3.11+, `git`, and for the runner the `claude` CLI and `gh`.
+- **Agent-agnostic.** A documented [event format](docs/events.md), a Python client, a CLI and
+  an HTTP endpoint. The Claude Code runner is just one adapter.
+- **Honest status.** It never trusts an agent's last word: runs need heartbeats, agents decay
+  from working to idle to stale, and runs that ended mid-task show which agent was cut off.
+- **Local and private.** Listens on 127.0.0.1, stores everything in one SQLite file, scrubs
+  secrets before storing them, makes no third-party requests and sends no telemetry.
+
+## Try it in one minute
+
+Requires Python 3.11+ and, to build the web app, Node 20+.
 
 ```bash
 git clone <this repo> && cd control-room
 python -m venv .venv
-.venv/bin/pip install -e ".[dev]"     # Windows: .venv\Scripts\pip install -e ".[dev]"
-```
-
-Build the web dashboard once (needs Node 20+):
-
-```bash
+.venv/bin/pip install -e ".[dev]"          # Windows: .venv\Scripts\pip install -e ".[dev]"
 cd frontend && npm ci && npm run build && cd ..
+.venv/bin/controlroom demo                  # opens http://127.0.0.1:7777
 ```
 
-Your config and data live in a home folder: `$CONTROLROOM_HOME`, or `~/.controlroom` by default.
+The demo runs six fictional projects through every state the dashboard knows (a live run, a
+stuck agent, a run that left work unfinished, a failed run, a lost run) in a throwaway folder
+that is deleted when you stop it.
+
+## Report your own agents
+
+Start the dashboard, then send events from anywhere.
 
 ```bash
-mkdir -p ~/.controlroom && cp config.example.toml ~/.controlroom/config.toml
-controlroom status        # token use today / this week, budget left
-controlroom watch         # dashboard on http://127.0.0.1:7777
-controlroom run --dry-run # what today's scheduled run would do
+controlroom watch                           # http://127.0.0.1:7777
 ```
 
-Don't put the home folder inside a git repository: Claude Code would treat that repository as
-the agents' project, so the runner refuses to start.
+**From Python** (writes straight to the local store; no server needed):
+
+```python
+from controlroom.client import Reporter
+
+with Reporter("my-project").run("Fix the login bug") as run:  # sends heartbeats while open
+    lead = run.agent("lead", role="lead", model="claude-opus-5-5")
+    dev = run.agent("dev-1", role="developer", parent="lead", description="Implement the fix")
+    dev.action("Bash", detail="npm test", summary="Ran the tests", result="42 passed")
+    dev.tokens(input=1200, output=300, model="claude-sonnet-5-5")
+    dev.finish()
+    lead.finish()
+```
+
+**From any language**, with the CLI or over HTTP:
+
+```bash
+RUN=$(controlroom emit run.started --project my-project -d title="Fix the login bug")
+controlroom emit agent.action --project my-project --run $RUN --agent dev-1 -d tool=Bash -d detail="npm test"
+controlroom emit run.finished --project my-project --run $RUN
+
+curl -X POST http://127.0.0.1:7777/v1/events -H "Authorization: Bearer $(controlroom token)" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"agent.message","project":"my-project","run":"r1","agent":"lead","data":{"text":"hi"}}'
+```
+
+[`docs/events.md`](docs/events.md) is the full format, how the dashboard interprets it, and how
+to write an adapter for your framework.
+
+## Configuration
+
+Everything lives in a home folder: `$CONTROLROOM_HOME`, or `~/.controlroom` by default. A config
+file is optional. To set budgets, a schedule, display names or runner teams, copy
+[`config.example.toml`](config.example.toml) to `<home>/config.toml`:
+
+```toml
+[budget]
+agents_daily = 800_000           # token budget lines on the dashboard (0 = none)
+
+[projects.my-project]
+title = "My project: what it is"
+key = "MYP"
+```
+
+## The Claude Code runner (optional)
+
+Teams declared under `[teams.<name>]` are run by `controlroom run`: one Claude Code session per
+team per day, a lead delegating to subagents, every task on its own branch and pull request.
+Requires the `claude` CLI and `gh`.
+
+```bash
+controlroom setup          # create the team workspaces
+controlroom run --dry-run  # what today's scheduled run would do
+controlroom status         # tokens used today and this week, budget left
+```
+
+On Windows, `src/controlroom/runner/install-schedule.ps1 -HomeDir <home> -Python <python.exe>`
+registers a daily task. Don't put the home folder inside a git repository: Claude Code would
+treat that repository as the agents' project, so the runner refuses to start.
+
+**Safety.** The runner installs a guard hook that blocks pushes to anything but task branches,
+writes outside the team folder, secret files and outbound HTTP; enforces the token budget; makes
+QA wait for the tests; and stops a lead from ending a run while its agents still work. It is a
+strong guardrail, **not a sandbox**: review agent changes before you merge them, and run agents
+in a container or a VM for real isolation.
 
 ## How status works
 
-The dashboard never trusts an agent's own last word about itself:
-
-- **Runs.** While a run is in progress the runner rewrites `state/current.json` with a heartbeat
-  every 10 seconds. If the heartbeat stops (crash, sleep, closed window) and the agent process is
-  gone too, the run shows as **lost**, and the next run records it and leaves the team a note
-  about any uncommitted work.
-- **Agents.** *Working*, *waiting* (a lead waiting on its agents), *idle* after 2 minutes without
-  activity, *stale* after 10 (it may be stuck), *finished*, *failed*, or **cut off** when the run
-  ended before the agent reported back. Thresholds live under `[monitor]` in the config.
-- **Order.** The guard refuses to start QA while a developer or tester is still running, and
-  stops the lead from ending a run while agents it started are still working (`[pipeline]`).
+- **Runs** are live while events or heartbeats keep coming. A run that goes silent without
+  finishing is **lost**.
+- **Agents** are *working*, *waiting* on agents they started, *idle* after 2 minutes, *stale*
+  after 10 (maybe stuck), *finished*, *failed*, or **cut off** when the run ended first.
 - **Time.** The API speaks UTC only. The dashboard shows times on this computer's clock by
-  default (browsers' time-zone data can lag behind the OS), or in the browser's zone if you prefer.
-
-## Safety
-
-The runner installs a guard hook that blocks pushes to anything but task branches, writes outside
-the team folder, secret files and outbound HTTP, and enforces the token budget. It is a strong
-guardrail, **not a sandbox**: review agent changes before you merge them, and run agents in a
-container or a VM for real isolation.
-
-The dashboard listens on `127.0.0.1` only, checks the `Host` header, and its buttons reject
-cross-site requests. It sends no telemetry.
+  default (browsers' time-zone data can lag behind the OS), or in the browser's zone.
 
 ## Development
 
 ```bash
 ruff check . && ruff format --check .   # Python lint and format
 pytest                                  # Python tests
-```
-
-The dashboard is a React + TypeScript app in `frontend/` (Vite, Tailwind CSS, Radix UI, TanStack
-Query). For live reload, run `controlroom watch --no-browser` and, in another terminal:
-
-```bash
 cd frontend
-npm run dev          # http://localhost:5173, proxies /api to the Python server on :7777
-npm run typecheck && npm run lint && npm run format:check
+npm run dev          # http://localhost:5173, proxies /api to `controlroom watch` on :7777
+npm run typecheck && npm run lint && npm run format:check && npm test
 ```
 
-`npm run build` writes the production bundle into `src/controlroom/static/`, which the Python
-server serves. Fonts are bundled locally: the page makes no requests to other hosts.
+The dashboard is React + TypeScript (Vite, Tailwind CSS, Radix UI, TanStack Query).
+`npm run build` writes it into `src/controlroom/static/`, which the Python server serves.
 
 ## License
 

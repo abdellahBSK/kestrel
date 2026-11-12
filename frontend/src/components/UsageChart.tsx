@@ -54,11 +54,14 @@ export function UsageChart({ data, cap }: { data: DailyUsage[]; cap: number }) {
   const gap = 2;
   const today = data.length - 1;
   const hovered = hover !== null ? data[hover] : undefined;
+  // "You" (your own Claude Code usage) only when there is any: other sources have no such logs.
+  const series = SERIES.filter((s) => s.key !== "personal" || data.some((d) => d.personal > 0));
+  const groupW = series.length * barW + (series.length - 1) * gap;
 
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-        {SERIES.map((s) => (
+        {series.map((s) => (
           <span key={s.key} className="text-ink-2 inline-flex items-center gap-1.5 text-[12px]">
             <span className="size-2.5 rounded-[3px]" style={{ background: s.color }} />
             {s.label}
@@ -154,9 +157,9 @@ export function UsageChart({ data, cap }: { data: DailyUsage[]; cap: number }) {
                       fill="var(--surface-2)"
                     />
                   )}
-                  {SERIES.map((s, k) => {
+                  {series.map((s, k) => {
                     const v = d[s.key];
-                    const bx = cx - barW - gap / 2 + k * (barW + gap);
+                    const bx = cx - groupW / 2 + k * (barW + gap);
                     return <path key={s.key} d={barPath(bx, y(v), barW, y(0) - y(v))} fill={s.color} />;
                   })}
                   <text
@@ -209,7 +212,7 @@ export function UsageChart({ data, cap }: { data: DailyUsage[]; cap: number }) {
                   month: "short",
                 })}
               </div>
-              {SERIES.map((s) => (
+              {series.map((s) => (
                 <div key={s.key} className="flex items-center gap-2 text-[12px]">
                   <span className="size-2 rounded-[2px]" style={{ background: s.color }} />
                   <span className="text-ink-2">{s.label}</span>
