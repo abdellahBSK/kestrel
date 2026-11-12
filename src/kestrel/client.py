@@ -76,10 +76,19 @@ class Reporter:
             e["id"] = id
         return self.send([e])
 
-    def run(self, title: str | None = None, *, run_id: str | None = None, budget: int | None = None, ts=None) -> Run:
-        """Start a run. Use it as a context manager to send heartbeats and finish it automatically."""
+    def run(
+        self,
+        title: str | None = None,
+        *,
+        run_id: str | None = None,
+        budget: int | None = None,
+        source: str = "python",
+        ts=None,
+    ) -> Run:
+        """Start a run. Use it as a context manager to send heartbeats and finish it automatically.
+        `source` names what produced the run (your framework or tool)."""
         r = Run(self, run_id or time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6])
-        self.emit("run.started", run=r.id, ts=ts, title=title, budget=budget, source="python")
+        self.emit("run.started", run=r.id, ts=ts, title=title, budget=budget, source=source)
         return r
 
 

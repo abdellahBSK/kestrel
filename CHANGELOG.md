@@ -8,6 +8,15 @@ All notable changes to Kestrel are documented here. The format follows
 
 ### Added
 
+- **`kestrel init`** writes a commented config into the home folder, every value a default.
+- **`kestrel doctor`** checks Python, the home folder, the config (with the line of a TOML error),
+  the event store, the web app, the dashboard port, Claude Code hooks and, for the runner,
+  `claude`, `git`, `gh`, budgets and workspaces, and says how to fix each problem.
+- Guides: [the runner](docs/runner.md), [writing an adapter](docs/adapters.md) with a worked
+  example that the tests run, and a [docs index](docs/README.md).
+- `kestrel --help` groups the commands; every runner command has help text; `--home` works with
+  the installed `kestrel` command too.
+- `Reporter.run(source=...)` names what produced a run.
 - **Claude Code adapter**: `kestrel hook install` reports every Claude Code session: one run per
   prompt, subagents as child agents, tool calls with results and errors, tokens, permission
   notices. `kestrel hook status` and `kestrel hook uninstall`. ([docs](docs/claude-code.md))

@@ -11,7 +11,7 @@ See what every agent is doing, what it costs, and when it gets stuck. Live, loca
 ![Zero dependencies](https://img.shields.io/badge/runtime%20deps-0-brightgreen)
 ![No telemetry](https://img.shields.io/badge/telemetry-none-brightgreen)
 
-[Quick start](#quick-start) · [Report your agents](#report-your-agents) · [Event format](docs/events.md) · [Architecture](docs/architecture.md) · [Roadmap](specs/001-kestrel-v0.1/tasks.md) · [Contributing](CONTRIBUTING.md)
+[Quick start](#quick-start) · [Report your agents](#report-your-agents) · [Docs](docs/README.md) · [Event format](docs/events.md) · [Roadmap](specs/001-kestrel-v0.1/tasks.md) · [Contributing](CONTRIBUTING.md)
 
 <img src="docs/assets/overview-dark.png" alt="Kestrel overview: six projects with their health in the sidebar, token usage against the daily budget, and the week's schedule" width="900">
 
@@ -112,8 +112,8 @@ curl -X POST http://127.0.0.1:7777/v1/events \
   -d '{"type":"agent.message","project":"my-project","run":"r1","agent":"lead","data":{"text":"hi"}}'
 ```
 
-The [event format](docs/events.md) is twelve event types, documented in one page, with a guide to
-writing an adapter for your framework.
+The [event format](docs/events.md) is twelve event types, documented in one page, and
+[writing an adapter](docs/adapters.md) for your framework usually takes one file.
 
 ## How it works
 
@@ -141,6 +141,9 @@ kestrel run --dry-run  # what today's scheduled run would do
 kestrel status         # tokens used today and this week, budget left
 ```
 
+[The runner guide](docs/runner.md) covers setup, what happens during a run, the guard's rules and
+scheduling on Windows, macOS and Linux.
+
 A guard hook blocks pushes to anything but task branches, writes outside the team folder, secret
 files and outbound HTTP; enforces the budget; makes QA wait for the tests; and stops a lead from
 ending a run while its agents still work. It is a strong guardrail, **not a sandbox**: review
@@ -148,9 +151,9 @@ agent changes before merging, and use a container or VM for real isolation.
 
 ## Configuration
 
-Everything lives in one home folder: `$KESTREL_HOME`, or `~/.kestrel`. A config file is optional;
-copy [`config.example.toml`](config.example.toml) to `<home>/config.toml` to set budgets, display
-names, liveness thresholds or runner teams.
+Everything lives in one home folder: `$KESTREL_HOME`, or `~/.kestrel`. A config file is optional.
+`kestrel init` writes a commented one where every value is the default, and `kestrel doctor`
+checks your setup and says how to fix what isn't right.
 
 ```toml
 [budget]

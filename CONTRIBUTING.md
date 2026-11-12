@@ -34,6 +34,7 @@ pre-commit install                 # runs ruff and basic checks on each commit
 
 cd frontend && npm ci && npm run build && cd ..
 kestrel demo                       # http://127.0.0.1:7777
+kestrel doctor                     # if something doesn't show up
 ```
 
 For frontend work, run the API and the Vite dev server side by side:

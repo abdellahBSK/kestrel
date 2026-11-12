@@ -1,6 +1,7 @@
 # ─────────────────────────────────────────────────────────────
-#  Kestrel config. Copy this file to <home>/config.toml and edit it.
-#  <home> is $KESTREL_HOME, or ~/.kestrel when that is not set.
+#  An example Kestrel config with runner teams, budgets and a schedule.
+#  For your own, run `kestrel init`: it writes a commented config with the defaults into
+#  <home>/config.toml (<home> is $KESTREL_HOME, or ~/.kestrel). Runner guide: docs/runner.md
 #  Token unit = input + output + cache-write tokens ("fresh" tokens), weighted by model price.
 # ─────────────────────────────────────────────────────────────
 

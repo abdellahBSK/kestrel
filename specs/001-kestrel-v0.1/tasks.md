@@ -44,12 +44,12 @@ Spec: [spec.md](spec.md) · Plan: [plan.md](plan.md)
 - [x] T041 Claude Agent SDK adapter (Python): hook callbacks → events
 - [x] T042 Runner: replace Windows-only pieces (CREATE_NO_WINDOW, `cmd /k`, `notify.ps1`, Edge paths) with portable ones
 - [x] T043 Guard: recognize absolute POSIX paths, not only Windows-style ones
-- [ ] T044 Adapter guide with a worked example for a third framework
+- [x] T044 Adapter guide with a worked example (a hand-written agent loop, tested) and a TypeScript HTTP example
 
 ## Phase 4: polish the runner
 
-- [ ] T050 `kestrel init` writes a commented config into the home folder
-- [ ] T051 Runner documentation page
+- [x] T050 `kestrel init` writes a commented config into the home folder; `kestrel doctor` checks a setup ([spec 007](../007-first-run/spec.md))
+- [x] T051 Runner documentation page
 
 ## Phase 5: control and cost
 
