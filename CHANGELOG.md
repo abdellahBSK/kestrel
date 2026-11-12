@@ -8,6 +8,9 @@ All notable changes to Kestrel are documented here. The format follows
 
 ### Added
 
+- **One-command install**: `pipx install kestrel-agents`, or try it with `uvx kestrel-agents demo`;
+  the package ships the dashboard and has no dependencies.
+- **Docker image** `ghcr.io/abdellahbsk/kestrel` for amd64 and arm64, running as a non-root user.
 - **Stop from the dashboard**: Stop buttons for a run, each running agent and a whole project, and
   `kestrel stop [project] [--run R] [--agent A]`. Stops reach Claude Code and the Agent SDK
   (the next tool call is refused and the session ends), the runner, the Python client

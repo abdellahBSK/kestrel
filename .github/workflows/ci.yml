@@ -105,9 +105,9 @@ jobs:
       - run: docker build -t kestrel:ci .
       - name: The image serves the demo, as a non-root user
         run: |
-          docker run -d --name k -p 127.0.0.1:7777:7777 kestrel:ci demo --no-browser
+          docker run -d --name kestrel-ci -p 127.0.0.1:7777:7777 kestrel:ci demo --no-browser
           for i in $(seq 1 60); do curl -sf http://127.0.0.1:7777/v1/health && break; sleep 1; done
           curl -sf http://127.0.0.1:7777/ | grep -q '<div id="root">'
           curl -sf http://127.0.0.1:7777/api/overview | grep -q '"demo": true'
-          test "$(docker exec k id -u)" != "0"
-          docker logs k
+          test "$(docker exec kestrel-ci id -u)" != "0"
+          docker logs kestrel-ci
