@@ -1,5 +1,6 @@
 """The `kestrel` command line.
 
+kestrel init | doctor                  set up a home folder; check a setup
 kestrel watch                          the live dashboard (http://127.0.0.1:7777)
 kestrel demo                           the dashboard with realistic fake data
 kestrel emit | ingest | token          report events from any language (see docs/events.md)
@@ -15,33 +16,57 @@ import json
 import os
 import sys
 
-from kestrel import NAME, __version__, meter
-from kestrel.cli import events as cli_tools
-from kestrel.cli import hook as hook_cli
-from kestrel.runner import orchestrator as runner
+if "--home" in sys.argv[:-1]:  # before anything below reads the home folder
+    _i = sys.argv.index("--home")
+    os.environ["KESTREL_HOME"] = sys.argv[_i + 1]
+    del sys.argv[_i : _i + 2]
+
+from kestrel import NAME, __version__, meter  # noqa: E402
+from kestrel.cli import events as cli_tools  # noqa: E402
+from kestrel.cli import hook as hook_cli  # noqa: E402
+from kestrel.cli import setup as setup_cli  # noqa: E402
+from kestrel.runner import orchestrator as runner  # noqa: E402
+
+EPILOG = """
+Start here:
+  kestrel demo                 every state the dashboard knows, with fake data
+  kestrel init                 write a commented config;  kestrel doctor  checks a setup
+  kestrel watch                the dashboard for your agents (http://127.0.0.1:7777)
+
+Report your agents:
+  kestrel hook install         every Claude Code session on this computer
+  kestrel emit | ingest        from scripts, any language;  kestrel token  for HTTP
+
+The runner (optional): kestrel setup | run | status | stop | resume | brief | prs | launch
+
+Docs: https://github.com/abdellahBSK/kestrel/tree/main/docs
+"""
 
 
 def main() -> None:
     p = argparse.ArgumentParser(
         prog="kestrel",
-        description=f"{NAME}: a live dashboard for AI agent runs, plus a scheduled runner for Claude Code teams.",
+        description=f"{NAME}: see what your AI agents are doing, what they cost, and when they get stuck.",
+        epilog=EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    p.add_argument("--home", metavar="FOLDER", help="the home folder to use (default: $KESTREL_HOME or ~/.kestrel)")
     p.add_argument("--version", action="version", version=f"{NAME} {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("status")
-    sub.add_parser("baseline")
-    sp = sub.add_parser("setup")
-    sp.add_argument("teams", nargs="*")
-    rp = sub.add_parser("run")
-    rp.add_argument("--team")
-    rp.add_argument("--force", action="store_true")
-    rp.add_argument("--dry-run", action="store_true")
+    sub.add_parser("status", help="(runner) tokens used today and this week, budget left")
+    sub.add_parser("baseline", help="(runner) your own daily Claude Code usage, as JSON")
+    sp = sub.add_parser("setup", help="(runner) create or refresh team workspaces")
+    sp.add_argument("teams", nargs="*", help="teams to set up (default: all)")
+    rp = sub.add_parser("run", help="(runner) today's scheduled run")
+    rp.add_argument("--team", help="run only this team")
+    rp.add_argument("--force", action="store_true", help="run even if it already ran today or it's before start_hour")
+    rp.add_argument("--dry-run", action="store_true", help="show what would run, run nothing")
     rp.add_argument("--allowance", type=int, help="cap each team's allowance (tokens)")
     rp.add_argument("--extra", type=int, default=0, help="one-off tokens on top of today's budget")
     rp.add_argument("--lead-model", help="override the lead model for this run")
-    sub.add_parser("stop", help="raise the STOP flag: halts running agents, blocks new runs")
-    sub.add_parser("resume", help="lower the STOP flag")
-    bp = sub.add_parser("brief")
+    sub.add_parser("stop", help="(runner) raise the STOP flag: halts running agents, blocks new runs")
+    sub.add_parser("resume", help="(runner) lower the STOP flag")
+    bp = sub.add_parser("brief", help="(runner) rebuild the daily brief")
     bp.add_argument("day", nargs="?", default=dt.date.today().isoformat())
     dp = sub.add_parser("demo", help="try the dashboard with realistic fake data (or, with a project: same as launch)")
     dp.add_argument("team", nargs="?", help="(launch) project to run locally")
@@ -50,13 +75,14 @@ def main() -> None:
     dp.add_argument("--port", type=int, default=7777)
     dp.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
     dp.add_argument("--host", help="address to listen on (default 127.0.0.1, or $KESTREL_HOST)")
-    lp = sub.add_parser("launch", help="run a project's PR or branch locally and open it in the browser")
+    lp = sub.add_parser("launch", help="(runner) run a project's PR or branch locally and open it in the browser")
     lp.add_argument("team")
     lp.add_argument("target", nargs="?", help="PR number or branch (default: main)")
     lp.add_argument("--no-install", action="store_true", help="skip the install step")
     cli_tools.add_parsers(sub)
     hook_cli.add_parsers(sub)
-    sub.add_parser("prs", help="list open agent PRs across all projects")
+    setup_cli.add_parsers(sub)
+    sub.add_parser("prs", help="(runner) list open agent PRs across all projects")
     wp = sub.add_parser("watch", help="open the live dashboard (http://127.0.0.1:7777 by default)")
     wp.add_argument("--port", type=int, default=7777)
     wp.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
@@ -76,6 +102,10 @@ def main() -> None:
     if args.cmd in ("demo", "launch"):
         runner.cmd_demo(args, meter.load_config())
         return
+    if args.cmd == "init":
+        sys.exit(setup_cli.cmd_init(args))
+    if args.cmd == "doctor":
+        sys.exit(setup_cli.cmd_doctor(args))
     if args.cmd == "hook":
         sys.exit(hook_cli.run(args))
     if args.cmd == "emit":

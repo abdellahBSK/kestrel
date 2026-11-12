@@ -703,7 +703,7 @@ def write_brief(day: str, cfg: dict) -> Path:
     s = meter.summary(cfg, days=7)
     b = cfg["budget"]
     lines = [
-        f"# 👑 Daily brief — {day}",
+        f"# Daily brief: {day}",
         "",
         "## Budget",
         f"- You today: **{fmt(s['today']['personal'])}** · you this week: {fmt(s['week']['personal'])}",

@@ -51,7 +51,7 @@ version = { attr = "kestrel.__version__" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-kestrel = ["py.typed", "static/*", "static/assets/*", "runner/*.ps1", "runner/git-hooks/*", "runner/roles/*.md", "runner/rules/*.md"]
+kestrel = ["py.typed", "templates/*.toml", "static/*", "static/assets/*", "runner/*.ps1", "runner/git-hooks/*", "runner/roles/*.md", "runner/rules/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
