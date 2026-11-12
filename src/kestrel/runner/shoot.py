@@ -1,4 +1,4 @@
-"""Screenshot a LOCAL page with headless Microsoft Edge (already on Windows; nothing to install).
+"""Screenshot a LOCAL page with a headless Chromium-based browser (Chrome, Edge or Chromium).
 
   python shoot.py <url> <out.png> [--size 390x844] [--wait 5000] [--scale 2]
 
@@ -17,20 +17,15 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 
-CANDIDATES = [
-    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-    r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
-    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-]
+if not __package__:  # run by path by an agent: make the package importable
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from kestrel.runner.system import headless_browser  # noqa: E402
 
 
 def browser() -> str:
-    for c in CANDIDATES:
-        if Path(c).exists():
-            return c
-    found = shutil.which("msedge") or shutil.which("chrome")
+    found = headless_browser()
     if not found:
-        sys.exit("No Edge/Chrome found for screenshots.")
+        sys.exit("No Chrome, Edge or Chromium found for screenshots (set KESTREL_BROWSER to its path).")
     return found
 
 
@@ -101,7 +96,7 @@ def main() -> None:
         target,
     ]
     subprocess.run(cmd, capture_output=True, timeout=120)
-    # On Windows the Edge launcher returns before the browser has written the file: wait for it.
+    # Some launchers (Edge on Windows) return before the browser has written the file: wait for it.
     deadline = time.time() + 60
     last = -1
     while time.time() < deadline:

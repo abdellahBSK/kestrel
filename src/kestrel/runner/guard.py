@@ -70,7 +70,15 @@ if HIDE_ATTRIBUTION:
         (r"(?i)co-authored-by|generated with \[?claude|noreply@anthropic", "Rule 1: no Claude attribution.")
     )
 
-ABS_PATH = re.compile(r"(?i)(?<![\w.])(?:[a-z]:[\\/]|/[a-z]/)[^\s'\"|;&]*")
+# Absolute paths in a shell command: Windows (C:\..., C:/...), Git Bash (/c/...), and the POSIX
+# top-level folders where homes, system files and mounted disks live. Not every word that starts
+# with "/": `curl http://localhost:3000/api` or `grep '/api/users'` are not file paths.
+ABS_PATH = re.compile(
+    r"(?<![\w.:/])(?:[a-zA-Z]:[\\/]|/[a-zA-Z]/"
+    r"|/(?:home|Users|root|etc|var|opt|usr|mnt|media|srv|private|Volumes|proc|sys|dev|tmp|Library|System)(?:/|\b))"
+    r"[^\s'\"|;&]*"
+)
+HARMLESS_PATH = re.compile(r"^/(dev/(null|stdout|stderr|stdin|tty)|tmp)\b")
 
 
 def out(obj: dict) -> None:
@@ -98,7 +106,7 @@ def norm(p: str) -> Path | None:
     if not p:
         return None
     s = p.strip().strip("'\"")
-    m = re.match(r"^/([a-zA-Z])/(.*)$", s)  # git-bash style /c/Users/...
+    m = re.match(r"^/([a-zA-Z])/(.*)$", s) if sys.platform == "win32" else None  # Git Bash: /c/Users/...
     if m:
         s = f"{m.group(1)}:/{m.group(2)}"
     try:
@@ -272,7 +280,7 @@ def pre(event: dict) -> None:
             p = norm(m.group(0))
             if p is not None and p in TOOLS:
                 continue
-            if p is not None and not allowed(p) and not re.match(r"(?i)^/(dev/null|tmp)", m.group(0)):
+            if p is not None and not allowed(p) and not HARMLESS_PATH.match(m.group(0)):
                 deny(f"Rule 3: path outside your workspace: {m.group(0)}")
         if MODE == "advisory" and re.search(r"\bgit\b[^|;&]*\b(commit|merge|cherry-pick|am|apply|stash)\b", cmd):
             deny("Advisory mode: no commits.")

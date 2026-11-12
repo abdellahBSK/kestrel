@@ -23,6 +23,7 @@ from pathlib import Path
 
 from kestrel import NAME, meter, paths
 from kestrel.core import status
+from kestrel.runner import system
 
 HQ = meter.HQ
 TEAMS = HQ / "teams"
@@ -528,23 +529,7 @@ def prs_since(t: dict, since: float) -> list[dict]:
 
 
 def notify(title: str, body: str, url: str, url2: str = "") -> None:
-    args = [
-        "powershell",
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        str(paths.RUNNER / "notify.ps1"),
-        "-Title",
-        title,
-        "-Body",
-        body,
-        "-Url",
-        url,
-    ]
-    if url2:
-        args += ["-Url2", url2]
-    subprocess.run(args, capture_output=True)
+    system.notify(title, body, url, url2, runner_dir=paths.RUNNER)
 
 
 def wait_for_network(max_wait: int = 180) -> bool:
@@ -816,14 +801,11 @@ def cmd_demo(args, cfg: dict) -> None:
     if demo.get("install") and not args.no_install:
         print(f"  installing: {demo['install']}")
         subprocess.run(demo["install"], cwd=cwd, shell=True)
-    print(f"  starting:   {demo['run']}  (in a new window; close it to stop)")
-    # own console window, detached from this terminal's pipes (closing it stops the app)
-    subprocess.Popen(
-        ["cmd", "/k", f"title {team} demo - {branch} & {demo['run']}"],
-        cwd=cwd,
-        creationflags=subprocess.CREATE_NEW_CONSOLE,
-        close_fds=True,
-    )
+    where = system.open_terminal(demo["run"], cwd, f"{team} demo - {branch}", LOGS / f"launch-{team}.log")
+    if where == "window":
+        print(f"  starting:   {demo['run']}  (in a new window; close it to stop)")
+    else:
+        print(f"  starting:   {demo['run']}  (in the background; output in {where})")
     url = demo["url"]
     for _ in range(90):
         try:

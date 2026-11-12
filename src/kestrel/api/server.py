@@ -29,7 +29,7 @@ from kestrel.adapters import claude_code
 from kestrel.api import ingest
 from kestrel.core import runs, status
 from kestrel.core.events import EventError
-from kestrel.runner import orchestrator
+from kestrel.runner import orchestrator, system
 from kestrel.storage.store import open_store
 
 HQ = meter.HQ
@@ -385,7 +385,6 @@ def overview() -> dict:
 
 
 def spawn(args: list[str], window: bool) -> None:
-    flags = subprocess.CREATE_NEW_CONSOLE if window else (subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS)
     env = {
         **os.environ,
         paths.HOME_ENV: str(HQ),
@@ -394,7 +393,7 @@ def spawn(args: list[str], window: bool) -> None:
     subprocess.Popen(
         [sys.executable, "-m", "kestrel", *args],
         cwd=HQ,
-        creationflags=flags,
+        **system.background_kwargs(window),
         env=env,
         close_fds=True,
         stdin=subprocess.DEVNULL,

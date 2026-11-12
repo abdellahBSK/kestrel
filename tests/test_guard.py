@@ -63,6 +63,12 @@ def decision(out: dict | None) -> str:
         ('git commit -m "x" -m "Co-Authored-By: Claude"', {}, "allow"),  # attribution is kept by default
         ('git commit -m "x" -m "Co-Authored-By: Claude"', {"KESTREL_HIDE_ATTRIBUTION": "1"}, "deny"),
         ("npm test", {}, "allow"),
+        ("cat /etc/passwd", {}, "deny"),
+        ("cat /home/someone-else/notes.txt", {}, "deny"),
+        ("ls /Users/someone-else/Documents", {}, "deny"),
+        ("curl http://localhost:3000/api/users", {}, "allow"),
+        ("grep -rn '/api/users' src", {}, "allow"),
+        ("npm test > /dev/null 2>&1", {}, "allow"),
     ],
 )
 def test_bash_rules(home, command, env, expected):
