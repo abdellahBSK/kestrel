@@ -1,0 +1,122 @@
+from __future__ import annotations
+
+import json
+import threading
+import urllib.error
+import urllib.request
+
+import pytest
+
+from conftest import usage_record, write_transcript
+from controlroom import NAME, server
+
+
+@pytest.fixture
+def base_url(monkeypatch):
+    monkeypatch.setattr(server.kingdom, "open_prs", lambda t: [])  # never call `gh` in tests
+    server.CACHE.data.clear()
+    srv = server.ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+    port = srv.server_address[1]
+    monkeypatch.setattr(server, "HOSTS", {f"127.0.0.1:{port}", f"localhost:{port}"})
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{port}"
+    srv.shutdown()
+
+
+def get(url, headers=None):
+    with urllib.request.urlopen(urllib.request.Request(url, headers=headers or {})) as r:
+        return r.status, r.read()
+
+
+def post(url, headers=None):
+    req = urllib.request.Request(url, method="POST", headers=headers or {})
+    try:
+        with urllib.request.urlopen(req) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return e.code, None
+
+
+def test_page_carries_the_project_name(base_url):
+    status, body = get(base_url + "/")
+    page = body.decode()
+    assert status == 200
+    assert f"<title>{NAME}</title>" in page and "__APP_NAME__" not in page
+
+
+def test_overview_lists_configured_teams(base_url):
+    _, body = get(base_url + "/api/overview")
+    ov = json.loads(body)
+    assert [t["team"] for t in ov["teams"]] == ["sandbox", "todo-api", "docs-site"]
+    assert ov["running"] is None and ov["stop"] is False
+
+
+def test_foreign_host_header_is_rejected(base_url):
+    with pytest.raises(urllib.error.HTTPError) as e:
+        get(base_url + "/api/overview", headers={"Host": "evil.example:80"})
+    assert e.value.code == 403
+
+
+def test_buttons_need_the_custom_header_and_same_origin(base_url, home):
+    assert post(base_url + "/api/stop")[0] == 403
+    assert post(base_url + "/api/stop", {"X-Kingdom": "1", "Origin": "https://evil.example"})[0] == 403
+    status, res = post(base_url + "/api/stop", {"X-Kingdom": "1"})
+    assert status == 200 and res["ok"] and (home / "STOP").exists()
+    status, res = post(base_url + "/api/resume", {"X-Kingdom": "1"})
+    assert status == 200 and not (home / "STOP").exists()
+
+
+def test_unknown_team_and_preview_paths(base_url):
+    with pytest.raises(urllib.error.HTTPError) as e:
+        get(base_url + "/api/session?team=nope")
+    assert e.value.code == 404
+    with pytest.raises(urllib.error.HTTPError) as e:
+        get(base_url + "/previews/sandbox/..%2F..%2Fconfig.toml")
+    assert e.value.code == 404
+
+
+def test_parse_log_builds_the_feed(tmp_path):
+    ts = "2026-01-01T10:00:00.000Z"
+    path = write_transcript(
+        tmp_path / "s.jsonl",
+        [
+            usage_record(
+                ts,
+                "m1",
+                inp=10,
+                out=5,
+                content=[
+                    {"type": "text", "text": "Starting the run."},
+                    {"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "npm test"}},
+                    {"type": "tool_use", "id": "t2", "name": "Bash", "input": {"command": "git push origin main"}},
+                    {
+                        "type": "tool_use",
+                        "id": "t3",
+                        "name": "Agent",
+                        "input": {"subagent_type": "tester", "description": "Run tests"},
+                    },
+                ],
+            ),
+            {
+                "type": "user",
+                "timestamp": ts,
+                "message": {
+                    "content": [
+                        {"type": "tool_result", "tool_use_id": "t1", "content": "12 passed"},
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "t2",
+                            "content": "[Kingdom guard] Law 2: no",
+                            "is_error": True,
+                        },
+                    ]
+                },
+            },
+        ],
+    )
+    events, usage = server.parse_log(path, "lead", "sandbox")
+    assert [e["kind"] for e in events] == ["say", "tool", "tool", "delegate"]
+    assert events[1]["status"] == "ok" and events[1]["result"] == "12 passed"
+    assert events[2]["status"] == "blocked"
+    assert events[3]["status"] == "running" and events[3]["text"] == "→ tester: Run tests"
+    assert usage["tokens"] == 15 and usage["calls"] == 1
