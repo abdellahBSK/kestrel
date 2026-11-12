@@ -39,6 +39,7 @@ def fold(rows: list[tuple], *, heartbeat: float | None, now: float, th: dict, we
         "title": "",
         "source": "",
         "budget": 0,
+        "timeout": None,  # the run's own heartbeat_timeout, if it declared one
         "finish": None,
         "summary": "",
         "error": "",
@@ -54,6 +55,7 @@ def fold(rows: list[tuple], *, heartbeat: float | None, now: float, th: dict, we
             run["title"] = d.get("title") or run["title"]
             run["source"] = d.get("source") or run["source"]
             run["budget"] = d.get("budget", run["budget"])
+            run["timeout"] = d.get("heartbeat_timeout", run["timeout"])
             continue
         if typ == "run.finished":
             run["finish"] = (d.get("status", "ok"), ts)
@@ -120,7 +122,8 @@ def fold(rows: list[tuple], *, heartbeat: float | None, now: float, th: dict, we
     # ── states ──
     last_signal = max(x for x in (heartbeat, run["last"], 0.0) if x is not None)
     finished = run["finish"] is not None
-    live = not finished and bool(rows or heartbeat) and now - last_signal <= th["heartbeat_timeout"]
+    timeout = run["timeout"] or th["heartbeat_timeout"]
+    live = not finished and bool(rows or heartbeat) and now - last_signal <= timeout
     run_state = "running" if live else ("finished" if finished else "lost")
     run_status = run["finish"][0] if finished else None
 

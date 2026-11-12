@@ -8,6 +8,16 @@ All notable changes to Kestrel are documented here. The format follows
 
 ### Added
 
+- **Claude Code adapter**: `kestrel hook install` reports every Claude Code session: one run per
+  prompt, subagents as child agents, tool calls with results and errors, tokens, permission
+  notices. `kestrel hook status` and `kestrel hook uninstall`. ([docs](docs/claude-code.md))
+- **Claude Agent SDK adapter**: `ClaudeAgentOptions(hooks=kestrel.adapters.claude_agent_sdk.hooks())`.
+- `run.started` accepts `heartbeat_timeout` for sources that go quiet during long work;
+  `agent.tokens` accepts `interactive` for sessions a person drives.
+- The runner works on macOS and Linux: notifications (`osascript`, `notify-send`), demo
+  windows (Terminal, common Linux terminals, or a log file without a desktop) and screenshots
+  with any Chromium-based browser (`KESTREL_BROWSER` to choose one).
+- `--home` works on every command.
 - **Event format v1** ([docs](docs/events.md)): runs, agents, actions, messages, tokens,
   notices, heartbeats and pull requests, versioned and idempotent by `id`.
 - **SQLite event store** with deduplication and per-run heartbeats.
@@ -38,5 +48,7 @@ All notable changes to Kestrel are documented here. The format follows
 - Run times are no longer an hour off when the browser's time-zone data is out of date.
 - QA no longer starts while the tester is still running.
 - Two dashboards can no longer share one port on Windows.
+- The runner's guard now recognizes absolute macOS and Linux paths (`/home/…`, `/Users/…`,
+  `/etc/…`) as outside the workspace, not only Windows-style ones.
 
 [Unreleased]: https://github.com/abdellahBSK/kestrel/commits/main

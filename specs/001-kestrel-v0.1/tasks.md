@@ -40,10 +40,10 @@ Spec: [spec.md](spec.md) · Plan: [plan.md](plan.md)
 
 ## Phase 3: adapters
 
-- [ ] T040 Claude Code hooks adapter: `kestrel hook install` writes user-level hooks that report any session
-- [ ] T041 Claude Agent SDK adapter (Python): hook callbacks → events
-- [ ] T042 Runner: replace Windows-only pieces (CREATE_NO_WINDOW, `cmd /k`, `notify.ps1`, Edge paths) with portable ones
-- [ ] T043 Guard: recognize absolute POSIX paths, not only Windows-style ones
+- [x] T040 Claude Code hooks adapter: `kestrel hook install` writes user-level hooks that report any session ([spec 006](../006-claude-code-hooks/spec.md))
+- [x] T041 Claude Agent SDK adapter (Python): hook callbacks → events
+- [x] T042 Runner: replace Windows-only pieces (CREATE_NO_WINDOW, `cmd /k`, `notify.ps1`, Edge paths) with portable ones
+- [x] T043 Guard: recognize absolute POSIX paths, not only Windows-style ones
 - [ ] T044 Adapter guide with a worked example for a third framework
 
 ## Phase 4: polish the runner

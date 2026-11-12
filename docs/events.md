@@ -39,7 +39,7 @@ with a letter or digit.
 
 | Type | `data` |
 |---|---|
-| `run.started` | `title` (what this run does), `budget` (token allowance, optional), `source` (your tool's name) |
+| `run.started` | `title` (what this run does), `budget` (token allowance, optional), `source` (your tool's name), `heartbeat_timeout` (seconds of silence before the run counts as lost, 5–86400; for sources that cannot send heartbeats during long work) |
 | `run.heartbeat` | — |
 | `run.finished` | `status`: `ok` · `failed` · `stopped` · `interrupted`; `summary`, `error` (optional) |
 
@@ -50,7 +50,7 @@ with a letter or digit.
 | `agent.started` | `role` (e.g. `lead`, `developer`, `tester`, `qa`, `security`), `description`, `parent` (the agent that started this one), `model` |
 | `agent.action` | `tool` (required unless updating by `call`), `summary` (one human line), `detail` (the raw command or path), `status`: `running` · `ok` · `error` · `blocked`, `result`, `call` |
 | `agent.message` | `text` |
-| `agent.tokens` | `input`, `output`, `cache_read`, `cache_write` (counts), `model`, `cost_usd` (optional) |
+| `agent.tokens` | `input`, `output`, `cache_read`, `cache_write` (counts), `model`, `cost_usd` (optional), `interactive` (true for sessions a person drives: shown on the project, not added to the agents' total) |
 | `agent.notice` | `level`: `info` · `warning` · `critical`; `text` |
 | `agent.heartbeat` | — |
 | `agent.finished` | `status`: `ok` · `failed` · `stopped` · `interrupted`; `summary`, `error` |
@@ -72,8 +72,8 @@ again with the same `call` and its final `status` and `result`. The second only 
 You report what happened; the dashboard decides what it means. It never takes an agent's word
 that it is still working:
 
-- **A run is live** while events or heartbeats keep arriving. After 45 seconds of silence a run
-  that never sent `run.finished` is shown as **lost**. Send `run.heartbeat` every 10–15 seconds
+- **A run is live** while events or heartbeats keep arriving. After 45 seconds of silence (or the
+  run's own `heartbeat_timeout`) a run that never sent `run.finished` is shown as **lost**. Send `run.heartbeat` every 10–15 seconds
   while a run is alive, including while an agent waits on a long command.
 - **An agent** is *working* while it acts, *idle* after 2 minutes without activity, *stale* after
   10 (it may be stuck), and *waiting* while agents it started are still at work. It is *finished*
@@ -144,6 +144,10 @@ An adapter turns one agent setup into these events. Two good patterns:
 2. **Log tailing**: read the framework's own logs or transcripts and convert them, giving every
    event a deterministic `id` (derived from the file and line) so re-reading is harmless.
    [`adapters/claude_code.py`](../src/kestrel/adapters/claude_code.py) works this way.
+
+The [Claude Code hooks adapter](../src/kestrel/adapters/claude_code_hooks.py) combines both:
+lifecycle hooks for runs and tool calls, the transcript for tokens. See
+[Claude Code and the Claude Agent SDK](claude-code.md).
 
 Either way: send `agent.started` with a `parent` so the dashboard can draw the tree, send
 heartbeats while a run is alive, and always end with `run.finished`, including on errors.

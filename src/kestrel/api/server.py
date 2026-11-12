@@ -260,7 +260,7 @@ def usage(c: dict) -> dict:
     for project, ts, d in store().tokens_since(since):
         day = dt.datetime.fromtimestamp(ts).astimezone().date().isoformat()
         w = weigh(d.get("model", ""), d)
-        if day in per_day:
+        if day in per_day and not d.get("interactive"):  # your own sessions count as "you", below
             per_day[day] += w
         proj_week[project] = proj_week.get(project, 0) + w
         if day == today:

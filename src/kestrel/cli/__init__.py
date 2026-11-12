@@ -3,6 +3,7 @@
 kestrel watch                          the live dashboard (http://127.0.0.1:7777)
 kestrel demo                           the dashboard with realistic fake data
 kestrel emit | ingest | token          report events from any language (see docs/events.md)
+kestrel hook install                   report every Claude Code session
 kestrel status | setup | run | stop    the optional Claude Code runner
 """
 
@@ -16,6 +17,7 @@ import sys
 
 from kestrel import NAME, __version__, meter
 from kestrel.cli import events as cli_tools
+from kestrel.cli import hook as hook_cli
 from kestrel.runner import orchestrator as runner
 
 
@@ -53,6 +55,7 @@ def main() -> None:
     lp.add_argument("target", nargs="?", help="PR number or branch (default: main)")
     lp.add_argument("--no-install", action="store_true", help="skip the install step")
     cli_tools.add_parsers(sub)
+    hook_cli.add_parsers(sub)
     sub.add_parser("prs", help="list open agent PRs across all projects")
     wp = sub.add_parser("watch", help="open the live dashboard (http://127.0.0.1:7777 by default)")
     wp.add_argument("--port", type=int, default=7777)
@@ -73,6 +76,8 @@ def main() -> None:
     if args.cmd in ("demo", "launch"):
         runner.cmd_demo(args, meter.load_config())
         return
+    if args.cmd == "hook":
+        sys.exit(hook_cli.run(args))
     if args.cmd == "emit":
         sys.exit(cli_tools.cmd_emit(args))
     if args.cmd == "ingest":

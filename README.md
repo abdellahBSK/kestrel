@@ -63,6 +63,7 @@ agent, unfinished work, a failed run, a lost run) in a throwaway folder deleted 
 Then point your own agents at it:
 
 ```bash
+kestrel hook install   # every Claude Code session on this computer reports to Kestrel
 kestrel watch          # the dashboard for your real runs
 ```
 
@@ -78,6 +79,11 @@ The port is published on 127.0.0.1 only. Agents on the host report to it over HT
 </details>
 
 ## Report your agents
+
+**Claude Code and the Claude Agent SDK**: `kestrel hook install` once, or one line in your SDK
+program: `ClaudeAgentOptions(hooks=kestrel.adapters.claude_agent_sdk.hooks())`. Each prompt
+becomes a run, subagents become child agents, tool calls and tokens appear live.
+[Details](docs/claude-code.md).
 
 **Python**: no server needed; events go straight into the local store.
 
@@ -162,7 +168,8 @@ title = "My project: what it is"
 
 Kestrel is pre-1.0 and moving fast. Next up ([full list](specs/001-kestrel-v0.1/tasks.md)):
 
-- [ ] Claude Code hooks adapter for any Claude Code session, and a Claude Agent SDK adapter
+- [x] Claude Code hooks adapter for any Claude Code session, and a Claude Agent SDK adapter
+- [ ] Adapters for more frameworks ([ask for yours](../../issues/new?template=adapter_request.yml))
 - [ ] Alerts: stuck agent, failed run, budget threshold, PR waiting
 - [ ] Estimated cost in USD next to tokens
 - [ ] Stop buttons per agent and per project; budget caps that halt agents

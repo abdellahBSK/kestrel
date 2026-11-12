@@ -166,6 +166,11 @@ def _data(typ: str, d: dict) -> dict:
         out.update(title=_str(d, "title", limit=300), source=_str(d, "source", limit=64))
         if "budget" in d:
             out["budget"] = _count(d, "budget")
+        if "heartbeat_timeout" in d:  # seconds of silence before this run counts as lost
+            hb = d["heartbeat_timeout"]
+            if isinstance(hb, bool) or not isinstance(hb, (int, float)) or not 5 <= hb <= 86_400:
+                raise EventError("data.heartbeat_timeout must be a number of seconds from 5 to 86400")
+            out["heartbeat_timeout"] = int(hb)
     elif typ in ("run.finished", "agent.finished"):
         out.update(
             status=_choice(d, "status", FINISH_STATUSES, "ok"),
@@ -202,6 +207,8 @@ def _data(typ: str, d: dict) -> dict:
             cache_write=_count(d, "cache_write"),
             model=_str(d, "model", limit=128),
         )
+        if "interactive" in d:
+            out["interactive"] = bool(d["interactive"])
         if "cost_usd" in d:
             cost = d["cost_usd"]
             if isinstance(cost, bool) or not isinstance(cost, (int, float)) or cost < 0:

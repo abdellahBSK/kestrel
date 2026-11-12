@@ -28,6 +28,7 @@ Architecture decisions that outlive a single feature are recorded as ADRs in
 | 003 | [UTC in storage, local time on screen](003-utc-everywhere/spec.md) | Done |
 | 004 | [QA waits for the tester](004-pipeline-order/spec.md) | Done |
 | 005 | [Event format v1](005-event-format-v1/spec.md) | Done |
+| 006 | [Claude Code and Claude Agent SDK adapters](006-claude-code-hooks/spec.md) | Done |
 
 ## Proposing a change
 

@@ -30,8 +30,8 @@ shows. The API serves folded runs; the React app renders them. See the
 | 0 | Installable package, home folder, config defaults, tests, CI | Done |
 | 1 | Specs 002–004 (liveness, UTC, pipeline order); professional React dashboard | Done |
 | 2 | Event format v1, SQLite store, `POST /v1/events`, Python client, `emit`/`ingest`/`token`, demo mode | Done |
-| 3 | Claude Code hooks adapter for any Claude Code user; Claude Agent SDK adapter; cross-platform runner | Next |
-| 4 | Config and wording pass; `kestrel init`; runner docs | Planned |
+| 3 | Claude Code hooks adapter for any Claude Code user; Claude Agent SDK adapter; cross-platform runner | Done (adapter guide pending) |
+| 4 | Config and wording pass; `kestrel init`; runner docs | Next |
 | 5 | Alerts, USD cost, stop per agent and project, enforced budget caps, retries and durations, UI polish | Planned |
 | 6 | Packaging (`pipx`, `uvx`, Docker), README media, release automation, v0.1.0 | Planned |
 
