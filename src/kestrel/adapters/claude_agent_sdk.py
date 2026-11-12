@@ -35,17 +35,18 @@ SDK_EVENTS = (
 
 
 def callback(project: str | None = None, store=None):
-    """A hook callback for the SDK that reports every event it receives."""
+    """A hook callback for the SDK that reports every event it receives. When the owner stops the
+    run from the dashboard, or a budget cap is reached, it answers with the stop (spec 008)."""
 
     async def report(input_data: dict[str, Any], tool_use_id: str | None, context: Any) -> dict:
         try:
             event = dict(input_data)
             if tool_use_id and not event.get("tool_use_id"):
                 event["tool_use_id"] = tool_use_id
-            cch.handle(event, now=time.time(), store=store, project=project)
+            _, answer = cch.process(event, now=time.time(), store=store, project=project)
+            return answer or {}
         except Exception:  # monitoring must never break the agent
-            pass
-        return {}
+            return {}
 
     return report
 

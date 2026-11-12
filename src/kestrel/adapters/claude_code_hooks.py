@@ -121,6 +121,7 @@ class Session:
         self.alias: dict = data.get("alias") or {}  # prompt id → run it continues
         self.synced: dict = data.get("synced") or {}  # transcript path → last ts read
         self.said: list = data.get("said") or []  # keys of messages already reported
+        self.stopped: dict = data.get("stopped") or {}  # run or "run/agent" → why it was stopped
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -131,6 +132,7 @@ class Session:
             "alias": dict(list(self.alias.items())[-50:]),
             "synced": self.synced,
             "said": self.said[-300:],
+            "stopped": dict(list(self.stopped.items())[-50:]),
             "updated": time.time(),
         }
         tmp = self.path.with_name(f"{self.path.name}.{uuid.uuid4().hex[:8]}.tmp")
@@ -163,15 +165,38 @@ class Session:
 
 def handle(event: dict, *, now: float | None = None, store=None, project: str | None = None) -> list[dict]:
     """Turn one Claude Code hook input into stored Kestrel events. Returns the stored events."""
+    return process(event, now=now, store=store, project=project)[0]
+
+
+def stop_output(stop, whole_run: bool) -> dict:
+    """What a PreToolUse hook answers to stop an agent: refuse the tool call, and for a whole run
+    (or the main agent) also end the session. Claude Code and the Agent SDK read the same shape."""
+    why = f"Stopped from Kestrel: {stop.reason}."
+    deny = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": why
+            + ("" if whole_run else " Do not continue this task: report what you have done so far, and stop."),
+        }
+    }
+    return {**deny, "continue": False, "stopReason": why} if whole_run else deny
+
+
+def process(
+    event: dict, *, now: float | None = None, store=None, project: str | None = None
+) -> tuple[list[dict], dict | None]:
+    """(stored events, the hook's answer to Claude Code or None). The answer is only ever a stop."""
     now = time.time() if now is None else now
     name = event.get("hook_event_name", "")
     sid = event.get("session_id")
     if name not in EVENTS or not sid:
-        return []
+        return [], None
     s = Session(sid, event.get("cwd", ""))
     if project:
         s.project = _ident(project)
     out: list[dict] = []
+    answer: dict | None = None
     dirty = False
 
     def emit(typ: str, run: str, eid: str, agent: str | None = None, ts: float | None = None, **data) -> None:
@@ -277,16 +302,37 @@ def handle(event: dict, *, now: float | None = None, store=None, project: str | 
         tool = event.get("tool_name") or "tool"
         call = event.get("tool_use_id") or ""
         if name == "PreToolUse":
-            emit(
-                "agent.action",
-                run,
-                f"{call or uuid.uuid4().hex}:pre",
-                aid,
-                tool=tool,
-                call=call or None,
-                detail=describe(tool, event.get("tool_input") or {}, event.get("cwd", "")),
-                status="running",
-            )
+            stop = _should_stop(store, s.project, run, aid, now)
+            detail = describe(tool, event.get("tool_input") or {}, event.get("cwd", ""))
+            eid = call or uuid.uuid4().hex
+            if stop:
+                whole = stop.scope == "run" or aid == MAIN
+                answer = stop_output(stop, whole)
+                s.stopped[run if whole else f"{run}/{aid}"] = stop.reason
+                dirty = True
+                emit(
+                    "agent.action",
+                    run,
+                    f"{eid}:pre",
+                    aid,
+                    tool=tool,
+                    call=call or None,
+                    detail=detail,
+                    status="blocked",
+                    result=f"Stopped: {stop.reason}",
+                )
+                emit("agent.notice", run, f"{run}:{aid}:stopped", aid, level="critical", text=f"Stopped: {stop.reason}")
+            else:
+                emit(
+                    "agent.action",
+                    run,
+                    f"{eid}:pre",
+                    aid,
+                    tool=tool,
+                    call=call or None,
+                    detail=detail,
+                    status="running",
+                )
         elif call:
             failed = name == "PostToolUseFailure"
             result = _short(event.get("error"), 300) if failed else _result(event.get("tool_response"))
@@ -316,26 +362,28 @@ def handle(event: dict, *, now: float | None = None, store=None, project: str | 
             f"{run}:{aid}:finished:{int(now)}",
             aid,
             ts=now + 0.001,
-            status="ok",
-            summary=_short(event.get("last_assistant_message"), 300),
+            status="stopped" if f"{run}/{aid}" in s.stopped or run in s.stopped else "ok",
+            summary=_short(s.stopped.get(f"{run}/{aid}") or event.get("last_assistant_message"), 300),
         )
 
     elif name == "Stop":
         run = current_run()
         sync_transcript(event.get("transcript_path"), run, MAIN)
         last_words(run, MAIN)
-        if not event.get("background_tasks"):  # nothing left running in the background: done
-            summary = _short(event.get("last_assistant_message"), 300)
+        stopped = s.stopped.get(run)
+        if stopped or not event.get("background_tasks"):  # nothing left running in the background: done
+            summary = _short(stopped or event.get("last_assistant_message"), 300)
+            status = "stopped" if stopped else "ok"
             emit(
                 "agent.finished",
                 run,
                 f"{run}:main:finished:{int(now)}",
                 MAIN,
                 ts=now + 0.001,
-                status="ok",
+                status=status,
                 summary=summary,
             )
-            emit("run.finished", run, f"{run}:finished:{int(now)}", ts=now + 0.002, status="ok", summary=summary)
+            emit("run.finished", run, f"{run}:finished:{int(now)}", ts=now + 0.002, status=status, summary=summary)
             s.open, dirty = None, True
 
     elif name == "Notification":
@@ -348,21 +396,29 @@ def handle(event: dict, *, now: float | None = None, store=None, project: str | 
             run = s.open
             sync_transcript(event.get("transcript_path"), run, MAIN)
             why = _short(event.get("reason"), 60)
-            emit("agent.finished", run, f"{run}:main:end", MAIN, ts=now + 0.001, status="interrupted")
-            emit(
-                "run.finished",
-                run,
-                f"{run}:end",
-                ts=now + 0.002,
-                status="interrupted",
-                summary=f"Session ended ({why})" if why else None,
-            )
+            stopped = s.stopped.get(run)
+            status = "stopped" if stopped else "interrupted"
+            summary = _short(stopped, 300) if stopped else (f"Session ended ({why})" if why else None)
+            emit("agent.finished", run, f"{run}:main:end", MAIN, ts=now + 0.001, status=status)
+            emit("run.finished", run, f"{run}:end", ts=now + 0.002, status=status, summary=summary)
             s.open, dirty = None, True
 
     stored = _store(out, store, now)
     if dirty:
         s.save()
-    return stored
+    return stored, answer
+
+
+def _should_stop(store, project: str, run: str, agent: str, now: float):
+    """A stop requested from the dashboard, or a budget cap reached (kestrel.control)."""
+    from kestrel import meter
+    from kestrel.control import check
+
+    if store is None:
+        from kestrel.storage.store import open_store
+
+        store = open_store()
+    return check(store, project, run, agent, meter.load_config(), now)
 
 
 def _store(raw: list[dict], store, now: float) -> list[dict]:
@@ -382,12 +438,15 @@ def _store(raw: list[dict], store, now: float) -> list[dict]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """`kestrel hook claude-code`: read one hook input from stdin. Always exits 0, prints nothing."""
+    """`kestrel hook claude-code`: read one hook input from stdin. Always exits 0. It prints
+    nothing, except the answer that stops an agent when a stop was requested or a cap reached."""
     try:
-        raw = sys.stdin.buffer.read().decode("utf-8", errors="replace")
+        raw = sys.stdin.buffer.read().decode("utf-8-sig", errors="replace")  # tolerate a BOM (PowerShell pipes)
         event = json.loads(raw) if raw.strip() else {}
         if isinstance(event, dict):
-            handle(event)
+            _, answer = process(event)
+            if answer:
+                sys.stdout.write(json.dumps(answer))
     except Exception as e:  # never break Claude Code; leave a trace for debugging
         try:
             log = state_dir() / "errors.log"

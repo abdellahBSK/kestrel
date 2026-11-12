@@ -231,6 +231,26 @@ def check_order(tin: dict, event: dict, cfg: dict) -> None:
         )
 
 
+def stop_requested(event: dict, cfg: dict) -> None:
+    """A stop the owner asked for on the dashboard, or a project budget cap (kestrel.control).
+    The runner's run is the Claude Code session; its subagents are `agent-<id>` (adapters/claude_code)."""
+    if not TEAM or not event.get("session_id"):
+        return
+    try:
+        from kestrel.control import check
+        from kestrel.storage.store import open_store
+
+        aid = event.get("agent_id")
+        stop = check(open_store(), TEAM, str(event["session_id"]), f"agent-{aid}" if aid else "lead", cfg)
+    except Exception:
+        return  # the store is unavailable: the other rules still apply
+    if stop is None:
+        return
+    if stop.scope == "run" or not event.get("agent_id"):
+        halt(f"Stopped from the dashboard: {stop.reason}. Stop now.")
+    deny(f"Stopped from the dashboard: {stop.reason}. Report what you have done so far, and stop.")
+
+
 def pre(event: dict) -> None:
     if (HQ / "STOP").exists():
         halt("The owner raised the STOP flag. Stop now.")
@@ -239,6 +259,7 @@ def pre(event: dict) -> None:
         u = used()
         if u >= ALLOWANCE * cfg["budget"].get("stop_at", 1.0):
             halt(f"Token allowance exhausted ({u:,}/{ALLOWANCE:,}). Run is over.")
+    stop_requested(event, cfg)
 
     tool = event.get("tool_name", "")
     tin = event.get("tool_input") or {}

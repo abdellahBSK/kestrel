@@ -8,6 +8,7 @@ import {
   GitPullRequest,
   ListChecks,
   MonitorPlay,
+  OctagonX,
   Play,
 } from "lucide-react";
 import { Tabs } from "radix-ui";
@@ -29,7 +30,7 @@ import {
   MenuTrigger,
 } from "@/components/ui/overlays";
 import { Badge, Card, EmptyState, KeyBadge, Meter, Skeleton, Tooltip } from "@/components/ui/primitives";
-import { action, type Overview, type Session } from "@/lib/api";
+import { action, stopPath, type Overview, type Session } from "@/lib/api";
 import { clock, dateTime, duration, integer, relative, tokens, usd } from "@/lib/format";
 import { HEALTH } from "@/lib/health";
 import { useSession } from "@/lib/queries";
@@ -63,6 +64,7 @@ export function ProjectView({ ov, team, tab }: { ov: Overview | undefined; team:
   const qc = useQueryClient();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [confirmRun, setConfirmRun] = useState(false);
+  const [confirmStop, setConfirmStop] = useState<"run" | "project" | null>(null);
   const t = ov?.teams.find((x) => x.team === team);
   const { data: s, isLoading } = useSession(team, sessionId, !!t?.running);
   const [prevTeam, setPrevTeam] = useState(team);
@@ -142,13 +144,19 @@ export function ProjectView({ ov, team, tab }: { ov: Overview | undefined; team:
               </MenuContent>
             </Menu>
           )}
+          {s?.live && isLatest && (
+            <Button variant="danger" disabled={!!s.run?.stop_requested} onClick={() => setConfirmStop("run")}>
+              <OctagonX />
+              {s.run?.stop_requested ? "Stopping…" : "Stop run"}
+            </Button>
+          )}
           {t.runnable && (
             <Button variant="primary" disabled={blockedRun} onClick={() => setConfirmRun(true)}>
               <Play />
               Run now
             </Button>
           )}
-          {t.runnable && (
+          {(t.runnable || t.running) && (
             <Menu>
               <MenuTrigger asChild>
                 <Button variant="secondary" size="icon" aria-label="More actions">
@@ -156,19 +164,28 @@ export function ProjectView({ ov, team, tab }: { ov: Overview | undefined; team:
                 </Button>
               </MenuTrigger>
               <MenuContent>
-                <MenuItem
-                  icon={<MonitorPlay />}
-                  onSelect={() => doAction(`/api/demo?team=${encodeURIComponent(team)}&pr=`)}
-                >
-                  Demo the default branch
-                </MenuItem>
-                <MenuSeparator />
-                <MenuItem
-                  icon={<GitPullRequest />}
-                  onSelect={() => navigate({ view: "project", team, tab: "prs" })}
-                >
-                  Open pull requests
-                </MenuItem>
+                {t.running && (
+                  <MenuItem icon={<OctagonX />} onSelect={() => setConfirmStop("project")}>
+                    Stop every agent of {t.team}
+                  </MenuItem>
+                )}
+                {t.running && t.runnable && <MenuSeparator />}
+                {t.runnable && (
+                  <MenuItem
+                    icon={<MonitorPlay />}
+                    onSelect={() => doAction(`/api/demo?team=${encodeURIComponent(team)}&pr=`)}
+                  >
+                    Demo the default branch
+                  </MenuItem>
+                )}
+                {t.runnable && (
+                  <MenuItem
+                    icon={<GitPullRequest />}
+                    onSelect={() => navigate({ view: "project", team, tab: "prs" })}
+                  >
+                    Open pull requests
+                  </MenuItem>
+                )}
               </MenuContent>
             </Menu>
           )}
@@ -299,6 +316,23 @@ export function ProjectView({ ov, team, tab }: { ov: Overview | undefined; team:
         }
         confirm="Start run"
         onConfirm={() => doAction(`/api/run?team=${encodeURIComponent(team)}`)}
+      />
+      <ConfirmDialog
+        open={confirmStop !== null}
+        onOpenChange={(open) => !open && setConfirmStop(null)}
+        title={confirmStop === "project" ? `Stop every agent of ${t.team}?` : "Stop this run?"}
+        description={
+          <>
+            Its agents are refused their next action and end. Runs that start later are not affected. Agents
+            that report through the Claude Code hook, the Agent SDK, the runner or a client that checks for
+            stops halt within one action.
+          </>
+        }
+        confirm={confirmStop === "project" ? "Stop the project" : "Stop the run"}
+        danger
+        onConfirm={() =>
+          doAction(confirmStop === "project" ? stopPath(team) : stopPath(team, s?.session ?? null))
+        }
       />
     </div>
   );

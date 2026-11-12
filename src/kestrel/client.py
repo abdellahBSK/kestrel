@@ -11,6 +11,9 @@
         lead.finish()
     # leaving the block finishes the run ("failed" if an exception escaped)
 
+Stops from the dashboard and budget caps (spec 008): check `run.stop_requested` between steps, or
+call `run.check()`, which raises StopRequested; leaving the block then finishes the run as stopped.
+
 By default events go straight into this computer's store (<home>/data/events.db), no server
 needed. Pass url="http://127.0.0.1:7777" to send them to a running dashboard over HTTP instead.
 """
@@ -20,12 +23,21 @@ from __future__ import annotations
 import json
 import threading
 import time
+import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
 
 from kestrel.api import ingest
 from kestrel.core.events import normalize
+
+
+class StopRequested(Exception):
+    """The owner stopped this run (or agent) from the dashboard, or a budget cap was reached."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
 
 
 class Reporter:
@@ -51,10 +63,7 @@ class Reporter:
         now = time.time()
         clean = [normalize({"project": self.project, **e}, now) for e in events]
         if not self.url:
-            from kestrel.storage.store import open_store
-
-            store = self._store or open_store(self._home / "data" / "events.db" if self._home else None)
-            accepted, duplicates = store.add(clean)
+            accepted, duplicates = self._local().add(clean)
             return {"accepted": accepted, "duplicates": duplicates, "rejected": []}
         req = urllib.request.Request(
             f"{self.url}/v1/events",
@@ -67,6 +76,31 @@ class Reporter:
         )
         with urllib.request.urlopen(req, timeout=10) as r:
             return json.loads(r.read())
+
+    def _local(self):
+        from kestrel.storage.store import open_store
+
+        return self._store or open_store(self._home / "data" / "events.db" if self._home else None)
+
+    def stop_reason(self, run: str, agent: str | None = None) -> str | None:
+        """Why this run (or agent) must stop, or None: a stop requested on the dashboard or a
+        budget cap (kestrel.control). Asks the local store, or the dashboard over HTTP."""
+        if not self.url:
+            from kestrel import meter
+            from kestrel.control import check
+
+            stop = check(self._local(), self.project, run, agent, meter.load_config())
+            return stop.reason if stop else None
+        query = urllib.parse.urlencode(
+            {k: v for k, v in (("project", self.project), ("run", run), ("agent", agent)) if v}
+        )
+        req = urllib.request.Request(
+            f"{self.url}/v1/control?{query}",
+            headers={"Authorization": f"Bearer {self._token or ingest.token(self._home)}"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            body = json.loads(r.read())
+        return body.get("reason") if body.get("stop") else None
 
     def emit(self, type: str, *, run: str | None = None, agent: str | None = None, ts=None, id=None, **data) -> dict:
         e = {"type": type, "run": run, "agent": agent, "data": {k: v for k, v in data.items() if v is not None}}
@@ -94,11 +128,33 @@ class Reporter:
 
 class Run:
     HEARTBEAT_EVERY = 10.0
+    CHECK_EVERY = 2.0  # how often stop_requested asks again
 
     def __init__(self, reporter: Reporter, run_id: str):
         self.reporter, self.id = reporter, run_id
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self.stop_reason: str | None = None
+        self._checked = 0.0
+
+    def _poll(self) -> None:
+        if self.stop_reason is None and time.monotonic() - self._checked >= self.CHECK_EVERY:
+            self._checked = time.monotonic()
+            try:
+                self.stop_reason = self.reporter.stop_reason(self.id)
+            except Exception:
+                pass  # the dashboard may be restarting: ask again later
+
+    @property
+    def stop_requested(self) -> bool:
+        """True once the owner stopped this run or a budget cap was reached (see stop_reason)."""
+        self._poll()
+        return self.stop_reason is not None
+
+    def check(self) -> None:
+        """Raise StopRequested if this run must stop. Call it between steps."""
+        if self.stop_requested:
+            raise StopRequested(self.stop_reason or "stopped")
 
     def emit(self, type: str, *, agent: str | None = None, ts=None, **data) -> dict:
         return self.reporter.emit(type, run=self.id, agent=agent, ts=ts, **data)
@@ -131,16 +187,21 @@ class Run:
                 self.heartbeat()
             except Exception:
                 pass  # the dashboard may be restarting; the next beat retries
+            self._poll()
 
     def __enter__(self) -> Run:
         self._thread = threading.Thread(target=self._beat, name="kestrel-heartbeat", daemon=True)
         self._thread.start()
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:
+    def __exit__(self, exc_type, exc, tb) -> bool:
         if not self._stop.is_set():
-            self.finish("failed" if exc_type else "ok", error=f"{exc_type.__name__}: {exc}" if exc_type else None)
+            if exc_type is not None and issubclass(exc_type, StopRequested):
+                self.finish("stopped", summary=exc.reason)
+            else:
+                self.finish("failed" if exc_type else "ok", error=f"{exc_type.__name__}: {exc}" if exc_type else None)
         self._stop.set()
+        return exc_type is not None and issubclass(exc_type, StopRequested)  # a requested stop is not an error
 
 
 class Agent:
@@ -200,3 +261,13 @@ class Agent:
 
     def finish(self, status: str = "ok", *, summary: str | None = None, error: str | None = None, ts=None) -> None:
         self._emit("agent.finished", ts=ts, status=status, summary=summary, error=error)
+
+    @property
+    def stop_requested(self) -> bool:
+        """True when this agent, or its whole run, was stopped from the dashboard."""
+        if self.run.stop_requested:
+            return True
+        try:
+            return self.run.reporter.stop_reason(self.run.id, self.id) is not None
+        except Exception:
+            return False

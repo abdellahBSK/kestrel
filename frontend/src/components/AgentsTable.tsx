@@ -1,8 +1,13 @@
-import { CircleCheck, CircleDashed, CircleX, Hourglass, Users } from "lucide-react";
-import type { Agent, Session } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { CircleCheck, CircleDashed, CircleX, Hourglass, Square, Users } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { action, stopPath, type Agent, type Session } from "@/lib/api";
 import { clock, duration, integer, relative, shortModel, tokens, usd } from "@/lib/format";
 import { AGENT } from "@/lib/health";
 import { cn, roleColor } from "@/lib/utils";
+import { Button } from "./ui/button";
+import { ConfirmDialog } from "./ui/overlays";
 import { Card, EmptyState, RoleChip, Tooltip } from "./ui/primitives";
 
 /** The agent's state as decided by the server (status.py), with an icon so color is never alone. */
@@ -61,6 +66,8 @@ export function agentTree(agents: Agent[]): { a: Agent; depth: number }[] {
 }
 
 export function AgentsTable({ session }: { session: Session | undefined }) {
+  const qc = useQueryClient();
+  const [stopping, setStopping] = useState<Agent | null>(null);
   const agents = session?.agents ?? [];
   if (!agents.length)
     return (
@@ -85,7 +92,8 @@ export function AgentsTable({ session }: { session: Session | undefined }) {
               <th className="px-3 py-2 text-right font-medium">Actions</th>
               <th className="px-3 py-2 font-medium">Time</th>
               <th className="px-3 py-2 text-right font-medium">Cost</th>
-              <th className="w-[180px] py-2 pr-4 pl-3 text-right font-medium">Tokens</th>
+              <th className="w-[180px] py-2 pr-2 pl-3 text-right font-medium">Tokens</th>
+              <th className="w-10 py-2 pr-3" aria-label="Stop" />
             </tr>
           </thead>
           <tbody>
@@ -163,12 +171,54 @@ export function AgentsTable({ session }: { session: Session | undefined }) {
                       <span className="text-ink tabular w-12 text-right font-medium">{tokens(a.tokens)}</span>
                     </div>
                   </td>
+                  <td className="py-2.5 pr-3">
+                    {a.stop_requested ? (
+                      <Tooltip content={`Stop requested: ${a.stop_requested}. It ends at its next action.`}>
+                        <span className="text-critical-ink cursor-default text-[12px] whitespace-nowrap">
+                          Stopping
+                        </span>
+                      </Tooltip>
+                    ) : (
+                      session?.live &&
+                      ongoing && (
+                        <Tooltip content={a.parent ? "Stop this agent" : "Stop this agent and its run"}>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`Stop ${a.role}`}
+                            onClick={() => setStopping(a)}
+                          >
+                            <Square />
+                          </Button>
+                        </Tooltip>
+                      )
+                    )}
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
+      <ConfirmDialog
+        open={stopping !== null}
+        onOpenChange={(open) => !open && setStopping(null)}
+        title={`Stop the ${stopping?.role ?? ""} agent?`}
+        description={
+          stopping?.parent
+            ? "Its next action is refused and it is told to report what it has done and stop. The rest of the run goes on."
+            : "This is the agent the run belongs to: stopping it ends the whole run."
+        }
+        confirm="Stop the agent"
+        danger
+        onConfirm={async () => {
+          if (!stopping || !session?.session) return;
+          const res = await action(stopPath(session.team, session.session, stopping.id));
+          if (res.ok) toast.success(res.msg);
+          else toast.error(res.msg);
+          qc.invalidateQueries();
+        }}
+      />
       <p className="border-line text-muted border-t px-4 py-2.5 text-[12px]">
         Cost is an estimate at Claude API list prices; subscription plans are billed differently. Tokens are
         weighted by <code className="font-mono">[model_weights]</code> in the config.

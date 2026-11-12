@@ -64,8 +64,13 @@ def main() -> None:
     rp.add_argument("--allowance", type=int, help="cap each team's allowance (tokens)")
     rp.add_argument("--extra", type=int, default=0, help="one-off tokens on top of today's budget")
     rp.add_argument("--lead-model", help="override the lead model for this run")
-    sub.add_parser("stop", help="(runner) raise the STOP flag: halts running agents, blocks new runs")
-    sub.add_parser("resume", help="(runner) lower the STOP flag")
+    stp = sub.add_parser(
+        "stop", help="stop running agents: everything, or one project, run or agent (they halt at their next action)"
+    )
+    stp.add_argument("project", nargs="?", help="only this project (default: everything, and no new scheduled runs)")
+    stp.add_argument("--run", help="only this run of the project")
+    stp.add_argument("--agent", help="only this agent of the run")
+    sub.add_parser("resume", help="(runner) let scheduled runs start again after `kestrel stop`")
     bp = sub.add_parser("brief", help="(runner) rebuild the daily brief")
     bp.add_argument("day", nargs="?", default=dt.date.today().isoformat())
     dp = sub.add_parser("demo", help="try the dashboard with realistic fake data (or, with a project: same as launch)")
@@ -138,8 +143,15 @@ def main() -> None:
     elif args.cmd == "brief":
         print(runner.write_brief(args.day, cfg))
     elif args.cmd == "stop":
-        (runner.HQ / "STOP").write_text("Raised by the owner\n")
-        runner.log("STOP flag raised: agents halt at their next action.")
+        from kestrel import control
+        from kestrel.storage.store import open_store
+
+        if args.project:
+            print(control.request(open_store(), args.project, args.run, args.agent, reason="Stopped by the owner"))
+        else:
+            (runner.HQ / "STOP").write_text("Raised by the owner\n")
+            control.request(open_store(), control.ALL, reason="Stop all, by the owner")
+            runner.log("Stopping everything: agents halt at their next action; no new scheduled runs.")
     elif args.cmd == "resume":
         (runner.HQ / "STOP").unlink(missing_ok=True)
         runner.log("STOP flag lowered.")

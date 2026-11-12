@@ -38,6 +38,8 @@ export type Team = {
   source: string;
   scheduled_today: boolean;
   running: boolean;
+  /** A stop was requested for the running run and it hasn't ended yet. */
+  stopping: boolean;
   run_state: "running" | "lost" | null;
   health: Health;
   heartbeat_at: string | null;
@@ -114,6 +116,8 @@ export type Agent = {
   cost_usd: number;
   cost_unknown: boolean;
   duration_s: number;
+  /** Why a stop was requested for this agent (or its run), while it is still going. */
+  stop_requested?: string | null;
   state: AgentState;
   finished: boolean;
   last_activity: string;
@@ -140,6 +144,7 @@ export type Session = {
     tokens: number;
     cost_usd: number;
     cost_unknown: boolean;
+    stop_requested?: string | null;
   };
   sessions: { id: string; started_at: string | null; updated_at: string }[];
   events: FeedEvent[];
@@ -159,6 +164,14 @@ export const api = {
       `/api/session?team=${encodeURIComponent(team)}${id ? `&id=${encodeURIComponent(id)}` : ""}`,
     ),
 };
+
+/** Ask an agent, a run or a whole project to stop (spec 008). */
+export function stopPath(project: string, run?: string | null, agent?: string | null): string {
+  const q = new URLSearchParams({ project });
+  if (run) q.set("run", run);
+  if (agent) q.set("agent", agent);
+  return `/api/control/stop?${q.toString()}`;
+}
 
 /** Actions need a same-origin request with a custom header (the server rejects anything else). */
 export async function action(path: string): Promise<{ ok: boolean; msg: string }> {

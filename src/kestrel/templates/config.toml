@@ -42,13 +42,22 @@ min_team_run = 120_000
 # haiku = 0.25
 default = 1.0
 
+# Estimated cost: Claude models are priced at API list prices out of the box. Add other
+# providers' models, or your own rates, in USD per million tokens (first matching name wins).
+# Cache prices default to 1.25x (write) and 0.1x (read) the input price.
+# [prices."gpt-x"]
+# input = 1.25
+# output = 10.0
+
 # ─────────────────────────────────────────────────────────────────────────────
-#  Projects (optional): display names for projects that report events.
-#  A project appears on its own as soon as it sends an event; this only names it.
+#  Projects (optional): a display name, and daily caps that stop the project's agents.
+#  A project appears on its own as soon as it sends an event; none of this is required.
 # ─────────────────────────────────────────────────────────────────────────────
 # [projects.my-project]
 # title = "My project: what it does"
 # key = "MYP"
+# daily_tokens = 2_000_000   # stop its agents once they used this many tokens today (local day)
+# daily_usd = 25.0           # ...or once they cost this much today (estimated at list prices)
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  The runner (optional): scheduled teams of Claude Code agents working on your repositories.

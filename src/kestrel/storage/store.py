@@ -37,6 +37,18 @@ CREATE TABLE IF NOT EXISTS heartbeats (
     ts      REAL NOT NULL,
     PRIMARY KEY (project, run, agent)
 );
+-- Stop requests (spec 008). project '*' = everything; run and agent narrow it down. A request
+-- applies to runs that existed at ts, so a stopped project can start again later.
+CREATE TABLE IF NOT EXISTS controls (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts      REAL NOT NULL,
+    project TEXT NOT NULL,
+    run     TEXT,
+    agent   TEXT,
+    reason  TEXT NOT NULL,
+    source  TEXT NOT NULL DEFAULT 'owner'
+);
+CREATE INDEX IF NOT EXISTS controls_project ON controls (project, ts);
 """
 
 
@@ -89,7 +101,79 @@ class Store:
                 raise
         return inserted + len(beats), len(rows) - inserted
 
+    def add_control(
+        self,
+        project: str,
+        run: str | None = None,
+        agent: str | None = None,
+        *,
+        reason: str,
+        source: str = "owner",
+        ts: float | None = None,
+    ) -> int:
+        """Record a stop request. Returns its id."""
+        with self.lock:
+            cur = self.db.execute(
+                "INSERT INTO controls (ts, project, run, agent, reason, source) VALUES (?, ?, ?, ?, ?, ?)",
+                (time.time() if ts is None else ts, project, run, agent, reason, source),
+            )
+            return cur.lastrowid
+
+    def delete_runs_before(self, cutoff: float) -> tuple[int, int]:
+        """Delete every run whose last event is older than `cutoff`, and old stop requests.
+        Returns (runs, events) deleted."""
+        with self.lock:
+            old = self.db.execute(
+                "SELECT project, run FROM events WHERE run IS NOT NULL GROUP BY project, run HAVING MAX(ts) < ?",
+                (cutoff,),
+            ).fetchall()
+            self.db.execute("BEGIN IMMEDIATE")
+            try:
+                before = self.db.total_changes
+                self.db.executemany("DELETE FROM events WHERE project = ? AND run = ?", old)
+                events = self.db.total_changes - before
+                self.db.executemany("DELETE FROM heartbeats WHERE project = ? AND run = ?", old)
+                self.db.execute(
+                    "DELETE FROM events WHERE run IS NULL AND ts < ? AND type NOT IN ('pr.opened', 'pr.closed')",
+                    (cutoff,),
+                )
+                self.db.execute("DELETE FROM controls WHERE ts < ?", (cutoff,))
+                self.db.execute("COMMIT")
+            except BaseException:
+                self.db.execute("ROLLBACK")
+                raise
+        return len(old), events
+
     # ── reading ──
+
+    def controls_for(self, project: str) -> list[dict]:
+        """Stop requests for this project or for everything, newest first."""
+        rows = self._all(
+            "SELECT id, ts, project, run, agent, reason, source FROM controls WHERE project IN (?, '*') "
+            "ORDER BY ts DESC",
+            (project,),
+        )
+        keys = ("id", "ts", "project", "run", "agent", "reason", "source")
+        return [dict(zip(keys, r, strict=True)) for r in rows]
+
+    def run_start(self, project: str, run: str) -> float | None:
+        return self._all("SELECT MIN(ts) FROM events WHERE project = ? AND run = ?", (project, run))[0][0]
+
+    def run_started(self, project: str, run: str) -> dict:
+        """The data of a run's run.started event ({} if there is none)."""
+        rows = self._all(
+            "SELECT data FROM events WHERE project = ? AND run = ? AND type = 'run.started' ORDER BY ts LIMIT 1",
+            (project, run),
+        )
+        return json.loads(rows[0][0]) if rows else {}
+
+    def tokens_for(self, project: str, since: float, run: str | None = None) -> list[dict]:
+        """The data of a project's (or one run's) agent.tokens events at or after `since`."""
+        sql = "SELECT data FROM events WHERE type = 'agent.tokens' AND project = ? AND ts >= ?"
+        args: tuple = (project, since)
+        if run is not None:
+            sql, args = sql + " AND run = ?", (*args, run)
+        return [json.loads(r[0]) for r in self._all(sql, args)]
 
     def _all(self, sql: str, args: tuple = ()) -> list[tuple]:
         with self.lock:

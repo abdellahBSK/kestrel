@@ -24,7 +24,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from kestrel import NAME, __version__, meter, paths
+from kestrel import NAME, __version__, control, meter, paths
 from kestrel.adapters import claude_code
 from kestrel.api import ingest
 from kestrel.core import cost, runs, status
@@ -190,15 +190,26 @@ def session_detail(team: str, run_id: str | None) -> dict:
     r = next((x for x in rs if x["id"] == run_id), rs[0])
     f = folded(team, r["id"])
     agents = sorted(f["agents"], key=lambda a: (a["parent"] is not None, a["first"]))
+    live = f["run"]["live"]
+
+    def stop_of(agent: str | None = None) -> str | None:
+        """A stop requested and not yet carried out (the run or agent is still going)."""
+        s = control.requested(store(), team, r["id"], agent) if live else None
+        return s.reason if s else None
+
+    run_stop = stop_of()
     return {
         "team": team,
         "session": r["id"],
-        "live": f["run"]["live"],
+        "live": live,
         "started_at": iso(r["started"]),
-        "run": run_public(f),
+        "run": {**run_public(f), "stop_requested": run_stop},
         "sessions": [{"id": x["id"], "started_at": iso(x["started"]), "updated_at": iso(x["last"])} for x in rs],
         "events": [feed_public(e) for e in f["feed"]],
-        "agents": [agent_public(a) for a in agents],
+        "agents": [
+            {**agent_public(a), "stop_requested": run_stop or (stop_of(a["id"]) if a["state"] != "finished" else None)}
+            for a in agents
+        ],
     }
 
 
@@ -369,6 +380,7 @@ def overview() -> dict:
                 "source": r["source"] if r else "",
                 "scheduled_today": name in c["schedule"].get(today, []),
                 "running": running,
+                "stopping": bool(running and control.requested(st, name, latest["id"])),
                 "run_state": r["state"] if r and r["state"] != "finished" else None,
                 "health": runs.health(f),
                 "heartbeat_at": iso(r["heartbeat"] or r["last"]) if r and r["state"] != "finished" else None,
@@ -444,14 +456,22 @@ def act(path: str, q: dict) -> dict:
     c = cfg()
     if DEMO:
         return {"ok": False, "msg": "Demo mode: buttons are disabled, nothing real is running."}
-    if path == "/api/stop":
-        (HQ / "STOP").write_text("Raised from the Kestrel\n")
-        orchestrator.log("STOP flag raised from the Kestrel.")
-        return {"ok": True, "msg": "STOP raised: agents halt at their next action."}
+    if path == "/api/stop":  # "Stop all": every running agent, and the runner's STOP flag
+        (HQ / "STOP").write_text(f"Raised from the {NAME} dashboard\n")
+        orchestrator.log(f"STOP flag raised from the {NAME} dashboard.")
+        control.request(store(), control.ALL, reason="Stop all, from the dashboard")
+        return {"ok": True, "msg": "Stopping everything: agents halt at their next action; no new scheduled runs."}
     if path == "/api/resume":
         (HQ / "STOP").unlink(missing_ok=True)
-        orchestrator.log("STOP flag lowered from the Kestrel.")
-        return {"ok": True, "msg": "STOP lowered."}
+        orchestrator.log(f"STOP flag lowered from the {NAME} dashboard.")
+        return {"ok": True, "msg": "Scheduled runs can start again."}
+    if path == "/api/control/stop":  # one project, run or agent, from any source
+        project = (q.get("project") or [""])[0]
+        run = (q.get("run") or [None])[0] or None
+        agent = (q.get("agent") or [None])[0] or None
+        if not project or not known(project):
+            return {"ok": False, "msg": "unknown project"}
+        return {"ok": True, "msg": control.request(store(), project, run, agent, reason="Stopped from the dashboard")}
     team = (q.get("team") or [""])[0]
     if team not in c["teams"]:
         return {"ok": False, "msg": "unknown team"}
@@ -542,6 +562,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(overview())
             if u.path == "/v1/health":
                 return self._json({"ok": True, "version": __version__, "events": "v1"})
+            if u.path == "/v1/control":  # should this run (or agent) stop? for HTTP reporters
+                if not ingest.authorized(self.headers.get("Authorization")):
+                    return self._json({"error": "missing or wrong bearer token (see `kestrel token`)"}, 401)
+                project = (q.get("project") or [""])[0]
+                if not project:
+                    return self._json({"error": "project is required"}, 400)
+                stop = control.check(
+                    store(), project, (q.get("run") or [None])[0], (q.get("agent") or [None])[0], cfg()
+                )
+                return self._json(
+                    {
+                        "stop": stop is not None,
+                        "reason": stop.reason if stop else None,
+                        "scope": stop.scope if stop else None,
+                    }
+                )
             if u.path == "/api/session":
                 team = (q.get("team") or [""])[0]
                 if not team or not known(team):
