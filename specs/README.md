@@ -30,6 +30,7 @@ Architecture decisions that outlive a single feature are recorded as ADRs in
 | 005 | [Event format v1](005-event-format-v1/spec.md) | Done |
 | 006 | [Claude Code and Claude Agent SDK adapters](006-claude-code-hooks/spec.md) | Done |
 | 007 | [First run: `kestrel init` and `kestrel doctor`](007-first-run/spec.md) | Done |
+| 008 | [Control and cost: stop buttons, budget caps, alerts, dollars](008-control-and-cost/spec.md) | Done |
 
 ## Proposing a change
 

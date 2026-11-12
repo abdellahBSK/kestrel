@@ -8,6 +8,19 @@ All notable changes to Kestrel are documented here. The format follows
 
 ### Added
 
+- **Stop from the dashboard**: Stop buttons for a run, each running agent and a whole project, and
+  `kestrel stop [project] [--run R] [--agent A]`. Stops reach Claude Code and the Agent SDK
+  (the next tool call is refused and the session ends), the runner, the Python client
+  (`run.stop_requested`, `run.check()`) and HTTP reporters (`GET /v1/control`).
+- **Budget caps that halt agents**: `[projects.<name>] daily_tokens` and `daily_usd`, and a run's
+  own `budget`.
+- **Estimated cost** in dollars per agent, run, project and day, from Claude API list prices or
+  `[prices]` in the config.
+- **Alerts** for stuck agents, failed and lost runs, budget thresholds, budget stops, agents
+  waiting for you and pull requests to review: under a bell on the dashboard, and sent once each
+  to the desktop and to `[alerts] webhook` (Slack, Discord) while `kestrel watch` runs.
+- **Retries** next to errors for each agent.
+- **Retention**: `[storage] retention_days` and `kestrel prune [--days N] [--dry-run]`.
 - **`kestrel init`** writes a commented config into the home folder, every value a default.
 - **`kestrel doctor`** checks Python, the home folder, the config (with the line of a TOML error),
   the event store, the web app, the dashboard port, Claude Code hooks and, for the runner,

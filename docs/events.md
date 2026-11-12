@@ -124,6 +124,37 @@ The body may be one event, an array, `{"events": [...]}`, or JSON Lines with
 says how many were accepted, how many were duplicates, and why any were rejected; valid events
 in a batch are kept even if others are not. `GET /v1/health` needs no token.
 
+## Stopping and budgets
+
+The owner can stop everything, a project, a run or one agent from the dashboard or with
+`kestrel stop`, and caps can stop a project's agents automatically:
+
+| Cap | Where | Counts |
+|---|---|---|
+| A run's own budget | `budget` in `run.started` | the run's tokens |
+| A project's daily tokens | `[projects.<name>] daily_tokens` | the project's tokens since local midnight |
+| A project's daily dollars | `[projects.<name>] daily_usd` | the estimated cost since local midnight |
+
+A stop applies to runs that exist when it is made, never to runs started later. Kestrel can't
+kill your process: agents learn about a stop when they ask, so **ask before each step**:
+
+- **Python**: `run.stop_requested` (checked automatically with each heartbeat), or `run.check()`,
+  which raises `StopRequested`; leaving the `with` block then finishes the run as `stopped`.
+  `agent.stop_requested` also covers a stop for that one agent.
+- **HTTP**: `GET /v1/control?project=P&run=R[&agent=A]` with the bearer token returns
+  `{"stop": true, "reason": "...", "scope": "run" | "agent"}` or `{"stop": false, ...}`.
+- **Claude Code, the Agent SDK and the runner** check before every tool call on their own.
+
+When you stop, send `run.finished` (or `agent.finished`) with `"status": "stopped"`.
+
+## Cost
+
+`agent.tokens` events are priced at Claude API list prices when the model is a Claude model, or
+from `[prices."<model name part>"]` in the config (USD per million `input`, `output`,
+`cache_write` and `cache_read` tokens). An event's own `cost_usd` always wins. Tokens of a model
+with no price show as unknown, never as free. Costs are estimates: subscription plans, batch
+discounts and partner platforms bill differently.
+
 ## Security
 
 - The token lives in `<home>/ingest.token`. Because it travels in a custom header, browsers must

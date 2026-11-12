@@ -198,7 +198,7 @@ export function OverviewView({ ov }: { ov: Overview | undefined }) {
                   <th className="py-2 pr-3 pl-5 font-medium">Project</th>
                   <th className="px-3 py-2 font-medium">Status</th>
                   <th className="px-3 py-2 text-right font-medium">Today</th>
-                  <th className="px-3 py-2 text-right font-medium">7 days</th>
+                  <th className="px-3 py-2 text-right font-medium whitespace-nowrap">7 days</th>
                   <th className="w-[200px] px-3 py-2 font-medium">Backlog</th>
                   <th className="py-2 pr-5 pl-3 text-right font-medium whitespace-nowrap">Needs you</th>
                 </tr>

@@ -53,12 +53,12 @@ Spec: [spec.md](spec.md) · Plan: [plan.md](plan.md)
 
 ## Phase 5: control and cost
 
-- [ ] T060 Alerts: stuck, failed, budget threshold, PR waiting (in-app + desktop + webhook)
-- [ ] T061 Estimated USD cost from a price table; Opus-equivalent normalization as an option
-- [ ] T062 Stop per agent and per project through a control channel adapters poll
-- [ ] T063 Budget caps that halt agents through the same channel
-- [ ] T064 Error, retry and duration columns per agent
-- [ ] T065 Event retention setting and `kestrel prune`
+- [x] T060 Alerts: stuck, failed, budget threshold, PR waiting (in-app + desktop + webhook)
+- [x] T061 Estimated USD cost from a price table; Opus-equivalent normalization as an option
+- [x] T062 Stop per agent and per project through a control channel adapters poll
+- [x] T063 Budget caps that halt agents through the same channel
+- [x] T064 Error, retry and duration columns per agent
+- [x] T065 Event retention setting and `kestrel prune`
 
 ## Phase 6: release
 

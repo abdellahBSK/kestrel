@@ -39,6 +39,11 @@ pull requests and questions waiting for you.
   a token on ingest, no telemetry, no third-party requests.
 - 📦 **Zero dependencies.** The Python package uses the standard library only. The dashboard ships
   pre-built inside it.
+- 🛑 **In control, not just informed.** Stop an agent, a run or a whole project from the
+  dashboard, and set daily caps in tokens or dollars that actually halt agents.
+- 💵 **Cost you can read.** Estimated dollars next to tokens for every agent, run, project and day.
+- 🔔 **Told when it matters.** Alerts for stuck agents, failed or lost runs, budgets and agents
+  waiting for you: on the dashboard, on your desktop, and to Slack or Discord.
 - 🧭 **Built for the morning after.** Which runs failed, which agent got stuck, which PRs need a
   review, which questions your agents left you, all on one screen.
 
@@ -163,8 +168,12 @@ agents_daily = 800_000        # token budget line on the dashboard (0 = none)
 heartbeat_timeout = 45        # silent this long → the run is lost
 stale_after = 600             # an agent idle this long may be stuck
 
+[alerts]
+webhook = "https://hooks.slack.com/services/…"   # optional; desktop notifications are on by default
+
 [projects.my-project]
 title = "My project: what it is"
+daily_usd = 20                # stop its agents once they cost this much today
 ```
 
 ## Roadmap
@@ -173,9 +182,9 @@ Kestrel is pre-1.0 and moving fast. Next up ([full list](specs/001-kestrel-v0.1/
 
 - [x] Claude Code hooks adapter for any Claude Code session, and a Claude Agent SDK adapter
 - [ ] Adapters for more frameworks ([ask for yours](../../issues/new?template=adapter_request.yml))
-- [ ] Alerts: stuck agent, failed run, budget threshold, PR waiting
-- [ ] Estimated cost in USD next to tokens
-- [ ] Stop buttons per agent and per project; budget caps that halt agents
+- [x] Alerts: stuck agent, failed run, budget threshold, PR waiting
+- [x] Estimated cost in USD next to tokens
+- [x] Stop buttons per agent and per project; budget caps that halt agents
 - [ ] `pipx install kestrel-agents`, Docker image on GHCR, v0.1.0
 
 Want an adapter for your framework? [Ask for it](../../issues/new?template=adapter_request.yml),

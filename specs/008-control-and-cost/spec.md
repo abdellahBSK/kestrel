@@ -1,6 +1,6 @@
 # 008: Control and cost: stop buttons, budget caps, alerts, dollars
 
-- **Status:** In progress
+- **Status:** Done
 - **Created:** 2026-11-12
 - **Parent:** [001](../001-kestrel-v0.1/spec.md) tasks T060–T065
 

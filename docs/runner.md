@@ -130,7 +130,7 @@ if it can't decide, the action is denied.
 
 | Rule | What it blocks |
 |---|---|
-| Stop and budget | Everything after `kestrel stop`, or once the team's allowance is used up. |
+| Stop and budget | Everything after `kestrel stop` or a Stop button on the dashboard, once the team's allowance is used up, or once its `[projects.<team>] daily_tokens` / `daily_usd` cap is reached. |
 | Stay in the workspace | Reading or writing outside the team folder; `.env` files; `~/.ssh`, `~/.aws`, `~/.claude` and other credential locations; absolute paths elsewhere on disk. |
 | Only task branches leave | `git push` except `-u origin <type>/<KEY>-<NNN>-<desc>`; force pushes; `gh` except `pr create/view/list/edit/comment/checks/diff/status`; merging. |
 | No history rewriting | `--no-verify`, `git reset --hard`, `rebase`, `filter-branch`, force flags. |
@@ -147,7 +147,8 @@ if it can't decide, the action is denied.
 |---|---|
 | `kestrel setup [team …]` | Create or refresh team workspaces (charter, settings, roles, repository). Safe to re-run. |
 | `kestrel run` | Today's scheduled run. `--team T` one team · `--force` ignore "already ran" and `start_hour` · `--dry-run` show what would happen · `--allowance N` cap each team · `--extra N` one-off extra tokens · `--lead-model M`. |
-| `kestrel stop` / `kestrel resume` | Raise or lower the `STOP` flag: running agents halt at their next action; no new runs start. Also a button on the dashboard. |
+| `kestrel stop [team] [--run R] [--agent A]` | Stop running agents at their next action: everything (and no new scheduled runs until `kestrel resume`), one team, one run or one agent. Also buttons on the dashboard. |
+| `kestrel resume` | Let scheduled runs start again after `kestrel stop`. |
 | `kestrel status` | Tokens used today and this week, budget left, today's teams. |
 | `kestrel brief [date]` | Rebuild the daily brief. |
 | `kestrel prs` | Open agent pull requests across all teams. |

@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { CircleCheck, CircleDashed, CircleX, Hourglass, Square, Users } from "lucide-react";
+import { CircleCheck, CircleDashed, CircleX, Hourglass, OctagonX, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { action, stopPath, type Agent, type Session } from "@/lib/api";
@@ -188,7 +188,7 @@ export function AgentsTable({ session }: { session: Session | undefined }) {
                             aria-label={`Stop ${a.role}`}
                             onClick={() => setStopping(a)}
                           >
-                            <Square />
+                            <OctagonX />
                           </Button>
                         </Tooltip>
                       )

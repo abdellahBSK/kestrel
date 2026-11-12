@@ -44,7 +44,7 @@ Claude Code calls the hook on its lifecycle events. Each call carries the sessio
 |---|---|
 | FR-001 | `kestrel hook install` MUST add Kestrel's hooks to the Claude Code user settings (`--scope project` or `local` for one repository), keep every other setting and hook, back up the file first, and be safe to run twice. |
 | FR-002 | `kestrel hook uninstall` MUST remove only Kestrel's hooks. |
-| FR-003 | The hook MUST exit 0, print nothing to stdout and finish quickly whatever happens, so Claude Code never blocks or receives unexpected context. |
+| FR-003 | The hook MUST exit 0 and finish quickly whatever happens, so Claude Code never blocks. It MUST print nothing to stdout, except, from spec 008 on, the answer that stops an agent when the owner or a budget cap asked for it. |
 | FR-004 | The project MUST be the name of the repository (the folder containing `.git`) or of the working folder; `KESTREL_PROJECT` overrides it. |
 | FR-005 | Events MUST have deterministic ids, so repeated or concurrent hook calls never duplicate anything. |
 | FR-006 | Runs from Claude Code MUST declare a `heartbeat_timeout` of 300 seconds in `run.started`, because Claude Code sends nothing while a model writes a long answer or a tool runs. |

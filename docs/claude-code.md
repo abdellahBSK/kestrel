@@ -41,6 +41,22 @@ run again (for example after moving Kestrel to another Python).
 Claude Code sends nothing while a model writes a long answer or a tool runs, so its runs are only
 called *lost* after 5 minutes of silence instead of 45 seconds.
 
+### Stopping a session, and daily caps
+
+The **Stop run** button on a run, the stop button next to each agent, and `kestrel stop
+<project>` reach Claude Code through the hook: its next tool call is refused, and the session
+ends (or, for a subagent, the subagent is told to report and stop). The run then shows as
+*stopped*, with the reason.
+
+To cap what a project's sessions may spend each day, add to `config.toml`:
+
+```toml
+[projects.my-repo]
+daily_usd = 20        # or daily_tokens = 2_000_000
+```
+
+Once reached, sessions in that repository are stopped the same way, and an alert says why.
+
 ### Your usage and the agents' budget
 
 The dashboard already shows your own Claude Code usage as **You** (read from Claude Code's logs).

@@ -125,6 +125,7 @@ Send `run.heartbeat` every 10–15 seconds while a run is alive, batch events wh
 - [ ] Tool calls have a short `summary` or a `detail` the dashboard can turn into a readable line.
 - [ ] Tokens are reported with the `model`, so weights and costs work.
 - [ ] Reporting failures are swallowed: monitoring never breaks the agent.
+- [ ] The agent asks whether to stop before each step (`run.check()`, or `GET /v1/control`).
 - [ ] Events that may be re-sent have deterministic `id`s.
 - [ ] Tests feed recorded framework output through the adapter (see
       [`tests/test_claude_code_hooks.py`](../tests/test_claude_code_hooks.py)).
