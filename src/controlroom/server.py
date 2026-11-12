@@ -13,6 +13,7 @@ import datetime as dt
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import threading
@@ -592,10 +593,28 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(res, 200 if res.get("ok") else 400)
 
 
+class Server(ThreadingHTTPServer):
+    """Owns its port exclusively. On Windows, SO_REUSEADDR lets a second server bind the same port
+    and the browser then reaches whichever one answers, so an old dashboard could shadow a new one."""
+
+    allow_reuse_address = sys.platform != "win32"
+
+    def server_bind(self) -> None:
+        if sys.platform == "win32" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 def serve(open_browser: bool = True, port: int = PORT) -> None:
     global HOSTS
     HOSTS = {f"127.0.0.1:{port}", f"localhost:{port}"}
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    try:
+        srv = Server(("127.0.0.1", port), Handler)
+    except OSError:
+        sys.exit(
+            f"Port {port} is already in use, probably by another {NAME} dashboard. "
+            f"Close it first, or pick another port with --port."
+        )
     url = f"http://127.0.0.1:{port}"
     print(f"{NAME}: {url}   (Ctrl+C to close)")
     if open_browser:

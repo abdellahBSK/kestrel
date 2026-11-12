@@ -164,3 +164,15 @@ def test_overview_has_a_utc_timestamp_and_seven_days_of_usage(base_url):
     assert ov["generated_at"].endswith("Z") and ov["version"]
     assert [d["date"] for d in ov["budget"]["daily"]] == sorted(d["date"] for d in ov["budget"]["daily"])
     assert len(ov["budget"]["daily"]) == 7
+
+
+def test_dashboard_owns_its_port_and_explains_a_clash():
+    first = server.Server(("127.0.0.1", 0), server.Handler)
+    port = first.server_address[1]
+    try:
+        with pytest.raises(OSError):
+            server.Server(("127.0.0.1", port), server.Handler)  # never silently shares the port
+        with pytest.raises(SystemExit, match="already in use"):
+            server.serve(open_browser=False, port=port)
+    finally:
+        first.server_close()
