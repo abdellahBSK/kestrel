@@ -21,6 +21,10 @@ Architecture decisions that outlive a single feature are recorded as ADRs in
 
 ## Index
 
+What comes next, and why, is in the [roadmap](ROADMAP.md): Kestrel's known limitations, each
+answered by a spec and a release.
+
+
 | # | Spec | Status |
 |---|---|---|
 | 001 | [Kestrel v0.1: an open-source monitor for AI agents](001-kestrel-v0.1/spec.md) | Done (v0.1.0) |
@@ -31,6 +35,11 @@ Architecture decisions that outlive a single feature are recorded as ADRs in
 | 006 | [Claude Code and Claude Agent SDK adapters](006-claude-code-hooks/spec.md) | Done |
 | 007 | [First run: `kestrel init` and `kestrel doctor`](007-first-run/spec.md) | Done |
 | 008 | [Control and cost: stop buttons, budget caps, alerts, dollars](008-control-and-cost/spec.md) | Done |
+| 009 | [OpenTelemetry bridge](009-opentelemetry-bridge/spec.md) | Draft (v0.2) |
+| 010 | [Adapters for the OpenAI Agents SDK, LangGraph and CrewAI](010-framework-adapters/spec.md) | Draft (v0.2) |
+| 011 | [A faster Claude Code hook](011-faster-hook/spec.md) | Draft (v0.2) |
+| 012 | [Team mode](012-team-mode/spec.md) | Draft (v0.4) |
+| 013 | [Cost that reads right for subscription users](013-cost-modes/spec.md) | Draft (v0.2) |
 
 ## Proposing a change
 

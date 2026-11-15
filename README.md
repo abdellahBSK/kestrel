@@ -12,7 +12,7 @@ See what every agent is doing, what it costs, and when it gets stuck. Live, loca
 ![Zero dependencies](https://img.shields.io/badge/runtime%20deps-0-brightgreen)
 ![No telemetry](https://img.shields.io/badge/telemetry-none-brightgreen)
 
-[Quick start](#quick-start) · [Report your agents](#report-your-agents) · [Docs](docs/README.md) · [Event format](docs/events.md) · [Roadmap](specs/001-kestrel-v0.1/tasks.md) · [Contributing](CONTRIBUTING.md)
+[Quick start](#quick-start) · [Report your agents](#report-your-agents) · [Docs](docs/README.md) · [Event format](docs/events.md) · [Roadmap](specs/ROADMAP.md) · [Contributing](CONTRIBUTING.md)
 
 <img src="docs/assets/demo.gif" alt="Kestrel's demo: the overview of six projects, a live run filling its activity feed, an agent that may be stuck with its stop buttons, and a failed run" width="900">
 
@@ -195,7 +195,8 @@ daily_usd = 20                # stop its agents once they cost this much today
 
 ## Roadmap
 
-Kestrel is pre-1.0 and moving fast. Next up ([full list](specs/001-kestrel-v0.1/tasks.md)):
+Kestrel is pre-1.0 and moving fast. The [roadmap](specs/ROADMAP.md) lists what it doesn't do well
+yet, and which release fixes it. Next up:
 
 - [x] Claude Code hooks adapter for any Claude Code session, and a Claude Agent SDK adapter
 - [ ] Adapters for more frameworks ([ask for yours](../../issues/new?template=adapter_request.yml))
@@ -203,8 +204,10 @@ Kestrel is pre-1.0 and moving fast. Next up ([full list](specs/001-kestrel-v0.1/
 - [x] Estimated cost in USD next to tokens
 - [x] Stop buttons per agent and per project; budget caps that halt agents
 - [x] `pipx install kestrel-agents`, `uvx kestrel-agents demo`, Docker image on GHCR
-- [ ] OpenTelemetry bridge, so any OTel-instrumented agent reports without an adapter
-- [ ] Team mode: one dashboard for several machines
+- [ ] v0.2: an OpenTelemetry bridge, adapters for the OpenAI Agents SDK, LangGraph and CrewAI,
+      a faster Claude Code hook, and costs that read right on a subscription
+- [ ] v0.3: alerts without the dashboard open, scheduling on every OS, a performance budget
+- [ ] v0.4: team mode
 
 Want an adapter for your framework? [Ask for it](../../issues/new?template=adapter_request.yml),
 or build it: it is usually one file.

@@ -69,5 +69,4 @@ Spec: [spec.md](spec.md) · Plan: [plan.md](plan.md)
 
 ## Later
 
-- [ ] T080 OpenTelemetry bridge: accept OTLP traces from instrumented agents as events
-- [ ] T081 Team mode: one dashboard for several machines, with authentication
+v0.1 is done. What comes next is in the [roadmap](../ROADMAP.md).

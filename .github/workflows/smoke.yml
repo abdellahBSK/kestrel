@@ -1,0 +1,52 @@
+name: Smoke test from PyPI
+
+# What a new user does in their first minute, against the published package:
+# `uvx kestrel-agents demo` and `pipx install kestrel-agents`, on Linux, macOS and Windows.
+# Runs after each release, every Monday, and on demand.
+
+on:
+  release:
+    types: [published]
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  first-minute:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: astral-sh/setup-uv@v6
+      - name: Wait for the release to reach PyPI
+        if: github.event_name == 'release'
+        run: |
+          want="${GITHUB_REF_NAME#v}"
+          for i in $(seq 1 30); do
+            got=$(curl -s https://pypi.org/pypi/kestrel-agents/json | python3 -c "import json,sys; print(json.load(sys.stdin)['info']['version'])" 2>/dev/null || true)
+            [ "$got" = "$want" ] && exit 0
+            sleep 20
+          done
+          echo "kestrel-agents $want did not appear on PyPI" && exit 1
+      - name: uvx kestrel-agents demo
+        run: |
+          uvx --no-cache kestrel-agents --version
+          uvx --no-cache kestrel-agents demo --no-browser --port 7790 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:7790/v1/health && break; sleep 2; done
+          curl -sf http://127.0.0.1:7790/ | grep -q '<div id="root">'
+          curl -sf http://127.0.0.1:7790/api/overview | grep -q '"demo": true'
+      - name: pipx install kestrel-agents
+        run: |
+          pipx install kestrel-agents
+          kestrel --version
+          KESTREL_HOME="$RUNNER_TEMP/kestrel-home" kestrel init
+          KESTREL_HOME="$RUNNER_TEMP/kestrel-home" kestrel doctor
