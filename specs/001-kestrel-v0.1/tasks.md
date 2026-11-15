@@ -63,9 +63,9 @@ Spec: [spec.md](spec.md) · Plan: [plan.md](plan.md)
 ## Phase 6: release
 
 - [x] T070 Wheel includes the built web app; `pipx install kestrel-agents` and `uvx kestrel-agents demo` work
-- [ ] T071 Publish to PyPI with trusted publishing on tag
-- [ ] T072 Docker image on GHCR
-- [ ] T073 v0.1.0
+- [x] T071 Publish to PyPI with trusted publishing on tag
+- [x] T072 Docker image on GHCR
+- [x] T073 v0.1.0 (released 2026-11-15)
 
 ## Later
 

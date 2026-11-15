@@ -23,7 +23,7 @@ Architecture decisions that outlive a single feature are recorded as ADRs in
 
 | # | Spec | Status |
 |---|---|---|
-| 001 | [Kestrel v0.1: an open-source monitor for AI agents](001-kestrel-v0.1/spec.md) | In progress |
+| 001 | [Kestrel v0.1: an open-source monitor for AI agents](001-kestrel-v0.1/spec.md) | Done (v0.1.0) |
 | 002 | [Honest liveness: heartbeats, stale and lost](002-honest-liveness/spec.md) | Done |
 | 003 | [UTC in storage, local time on screen](003-utc-everywhere/spec.md) | Done |
 | 004 | [QA waits for the tester](004-pipeline-order/spec.md) | Done |

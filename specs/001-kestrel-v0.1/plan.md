@@ -33,7 +33,7 @@ shows. The API serves folded runs; the React app renders them. See the
 | 3 | Claude Code hooks adapter for any Claude Code user; Claude Agent SDK adapter; cross-platform runner | Done |
 | 4 | Config and wording pass; `kestrel init` and `kestrel doctor`; runner and adapter guides | Done |
 | 5 | Alerts, USD cost, stop per agent and project, enforced budget caps, retries and durations, UI polish ([spec 008](../008-control-and-cost/spec.md)) | Done |
-| 6 | Packaging (`pipx`, `uvx`, Docker), README media, release automation, v0.1.0 | Next |
+| 6 | Packaging (`pipx`, `uvx`, Docker), README media, release automation, v0.1.0 | Done |
 
 ## Risks
 

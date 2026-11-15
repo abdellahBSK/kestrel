@@ -1,6 +1,6 @@
 # 001: Kestrel v0.1, an open-source monitor for AI agents
 
-- **Status:** In progress
+- **Status:** Done (v0.1.0)
 - **Created:** 2026-11-10
 - **Related:** [002](../002-honest-liveness/spec.md), [003](../003-utc-everywhere/spec.md),
   [004](../004-pipeline-order/spec.md), [005](../005-event-format-v1/spec.md)
