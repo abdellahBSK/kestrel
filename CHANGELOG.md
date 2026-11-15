@@ -6,6 +6,8 @@ All notable changes to Kestrel are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-15
+
 ### Added
 
 - **One-command install**: `pipx install kestrel-agents`, or try it with `uvx kestrel-agents demo`;
@@ -76,4 +78,5 @@ All notable changes to Kestrel are documented here. The format follows
 - The runner's guard now recognizes absolute macOS and Linux paths (`/home/…`, `/Users/…`,
   `/etc/…`) as outside the workspace, not only Windows-style ones.
 
-[Unreleased]: https://github.com/abdellahBSK/kestrel/commits/main
+[Unreleased]: https://github.com/abdellahBSK/kestrel/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/abdellahBSK/kestrel/releases/tag/v0.1.0

@@ -14,4 +14,4 @@ Layers (dependencies point inward):
 # The project's display name. Change it here; the dashboard and CLI read it from this constant.
 # (The package and command name `kestrel` also appear in pyproject.toml and the src/ folder name.)
 NAME = "Kestrel"
-__version__ = "0.1.0.dev0"
+__version__ = "0.1.0"
